@@ -1,0 +1,23 @@
+motor:
+  bus: 1
+  id : 1
+  calib_pos_deg: -23.288
+
+pdb:
+  bus: 2
+  id: 32
+
+servo:
+  port: /dev/ttyACM0
+  baudrate: 115200
+  gear_ratio: .5
+
+kinematics:
+  a: .07
+  b: .1524
+  c: .3
+  d: .01
+
+limits:
+  motor_min_angle_deg: -50.
+  motor_max_angle_deg: 50.

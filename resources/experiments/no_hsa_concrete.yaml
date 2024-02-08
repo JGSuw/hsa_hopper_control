@@ -1,0 +1,18 @@
+hardware: resources/hardware.yaml
+duration: 20.
+notes: None
+data_folder: data/no_hsa_concrete
+controller:
+  y_gains: 
+  - [400., 0.]
+  - [0., 0.]
+  - [400., 0.]
+  - [400., .5]
+  y_torques: [0., 0., 35., 0.]
+  y_offsets: [.16, 0.11, 0.16, 0.15]
+  y_guards:
+  - [1., -.115]
+  - [-1., 0.]
+  - [-1., .16]
+  - [1., -.14]
+  servo_pos: 1500
