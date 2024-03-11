@@ -1,0 +1,20 @@
+[build-system]
+requires = [
+    "setuptools",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hsa_hopper"
+version = "0.0.1"
+dependencies = [
+    "moteus==0.3.65",
+    "moteus-pi3hat==0.3.29",
+    "pyserial",
+    "asyncio",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["hsa_hopper"]
+exclude = ["hsa_hopper.tests"]

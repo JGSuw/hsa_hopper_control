@@ -18,7 +18,7 @@ async def main():
         if result is not None:
             print(f'position: {result.position}, velocity: {result.velocity}, torque: {result.torque}')
             x, xdot = robot.convert_motor_posvel(result)
-            f,J,H = forward_kinematics(robot.kinematics, x)
+            f = forward_kinematics(robot.kinematics, x)
             print(f'body position: {f[0]}, HSA length: {f[1]}')
 
     # result = await robot.motor.set_torque(0., query_state = True)

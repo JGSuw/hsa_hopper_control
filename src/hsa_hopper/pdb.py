@@ -33,7 +33,10 @@ class PowerDistributionBoard(moteus.Controller):
 
     async def get_power_state(self):
         state = await self.query()
-        return PowerState(state)
+        if state is not None:
+            return PowerState(state)
+        else:
+            return None
 
     async def print_info():
         power_state = await self.get_power_state()

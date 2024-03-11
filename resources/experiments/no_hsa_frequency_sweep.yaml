@@ -1,0 +1,24 @@
+hardware: resources/hardware.yaml
+duration: 20.
+substrate: uglycarpet
+data_folder: data/frequency_sweep/no_hsa_uglycarpet
+kpy: [330.,345.,360., 375., 390., 405., 420.]
+controller:
+  y_gains: 
+  - [0., 2.]
+  - [0., 0.]
+  - [0., 2.]
+  - [0., 2.]
+  y_torques: [-5., 0., 15., 0.]
+  y_offsets: [.18, 0.18, 0.18, 0.18]
+  y_guards:
+  - [1., -.13]
+  - [-1., 0.]
+  - [-1., .18]
+  - [1., -.15]
+  energy_setpoint: .5
+  energy_gain: 25.
+  oscillator_mass: 1.
+  oscillator_K: 400.
+  oscillator_L: 0.18
+  servo_pos: 1500

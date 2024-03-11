@@ -1,0 +1,23 @@
+hardware: resources/hardware.yaml
+duration: 20.
+substrate: uglycarpet
+data_folder: data/hsa_uglycarpet
+controller:
+  y_gains: 
+  - [25., 1.]
+  - [0., 0.]
+  - [25., 1.]
+  - [25., 1.]
+  y_torques: [-5., 0., 30., 0.]
+  y_offsets: [.18, 0.18, 0.18, 0.18]
+  y_guards:
+  - [1., -.13]
+  - [-1., 0.]
+  - [-1., .18]
+  - [1., -.15]
+  energy_setpoint: .5
+  energy_gain: 25.
+  oscillator_mass: 1.
+  oscillator_K: 400.
+  oscillator_L: 0.18
+  servo_pos: 1400

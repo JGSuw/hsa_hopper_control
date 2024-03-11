@@ -8,8 +8,8 @@ def encode(pulse):
     return data + _ZERO
 
 class Servo:
-    _MIN_PULSE = 1250
-    _MAX_PULSE = 1750
+    _MIN_PULSE = 1200
+    _MAX_PULSE = 1900
     _ZERO_SETPOINT = 1500
     _ANGLE_RANGE = 1800
 
@@ -51,9 +51,9 @@ class Servo:
             raise ValueError(f'setpoint {setpoint} is out of bounds [{self._MIN_PULSE}, {self._MAX_PULSE}]')
         
     def pulse_to_angle(self, pulse):
-        mid_pulse = (self._MIN_PULSE + self._MAX_PULSE)/2
-        return self._ANGLE_RANGE / (self._MAX_PULSE - self._MIN_PULSE) * self._gear_ratio * (pulse - mid_pulse)
+        mid_pulse = 1500
+        return self._ANGLE_RANGE / 2000 * self._gear_ratio * (pulse - mid_pulse)
     
     def angle_to_pulse(self, angle):
-        mid_pulse = (self._MIN_PULSE + self._MAX_PULSE)/2
-        return int((self._MAX_PULSE - self._MIN_PULSE) / self._ANGLE_RANGE / self._gear_ratio * angle + mid_pulse)
+        mid_pulse = 1500
+        return int((2000) / self._ANGLE_RANGE / self._gear_ratio * angle + mid_pulse)
