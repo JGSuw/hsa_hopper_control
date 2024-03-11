@@ -1,9 +1,10 @@
-servo_pos: [1850, 1900]
-kp_scale: .001
-kd_scale: .001
-jiggle_frequencies: [1.79,2.25,2,6,3.5,4.,5.1,7.,9.3]
-jiggle_amplitude: 0.
-jiggle_torque: 0.11
-jiggle_time: 10.
+servo_min_pulse: 1200
+servo_max_ulse: 2200
+motor_min_deg: -40
+motor_max_deg: 0
+N_setpoints: 5
+jiggle_frequencies: [2.25,3.]
+jiggle_amplitude: 10
+jiggle_time: 3.
 hardware: resources/hardware.yaml
 data_folder: data/hsa_identification

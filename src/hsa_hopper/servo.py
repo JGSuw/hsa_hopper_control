@@ -8,8 +8,8 @@ def encode(pulse):
     return data + _ZERO
 
 class Servo:
-    _MIN_PULSE = 1200
-    _MAX_PULSE = 1900
+    _MIN_PULSE = 800
+    _MAX_PULSE = 2200
     _ZERO_SETPOINT = 1500
     _ANGLE_RANGE = 1800
 

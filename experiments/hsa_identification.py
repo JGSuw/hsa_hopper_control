@@ -28,62 +28,59 @@ async def main(experiment_config):
 
     freqs = np.array(experiment_config['jiggle_frequencies'])
     T = experiment_config['jiggle_time']
-    jiggle_amplitude = experiment_config['jiggle_amplitude']
-    kp_scale = experiment_config['kp_scale']
-    kd_scale = experiment_config['kd_scale']
-    jiggle_torque = experiment_config['jiggle_torque']
+    amplitude = experiment_config['jiggle_amplitude']
+    servo_min = experiment_config['servo_min_pulse']
+    servo_max = experiment_config['servo_max_pulse']
+    motor_min_deg = experiment_config['motor_min_deg']
+    motor_max_deg = experiment_config['motor_max_deg']
+    N_setpoints = experiment_config['N_setpoints']
+    theta = np.linspace(-np.pi,0,N_setpoints)
+    a = (servo_min+servo_max)/2
+    b = (servo_max-servo_min)/2
+    servo_pos = np.array([a+b*np.cos(t) for t in theta])
+    a = (motor_min_deg + motor_max_deg)/2
+    b = (motor_max_deg-motor_min_deg)/2
+    motor_pos = np.array([a+b*np.cos(t) for t in theta])
 
     servo_pos = np.array(experiment_config['servo_pos'], dtype=int)
     angle = np.zeros(len(servo_pos), dtype=float)
-    data = {'kpx' : kp_scale*kpx, 'kdx': kd_scale*kdx, 
-            'motor_setpoint' : [],
-            'motor_angle' : [],
+    data = {'motor_angle' : [],
+            'motor_torque' : [],
             'hsa_angle' : [], 
             'hsa_len' : [],
-            'ff_torque' : [],
             'times' : []}
     for i,p in enumerate(servo_pos):
-        ff_torque = []
-        motor_angle= []
-        hsa_len = []
-        times = []
         robot.servo.write_setpoint(int(p))
-        input('manually jiggle the foot to estimate rest length, then press enter to continue')
-        motor_state = None
-        while motor_state is None:
-            motor_state = await robot.set_position_rev(0., kp_scale = 0., kd_scale = 0., query=True)
-            x0_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
         await robot.motor.controller.set_stop()
-        t = t0 = time.perf_counter()
-        jiggle_lengths = []
-        while (t-t0) < T:
-            motor_setpoint = x0_rad
-            motor_torque = -jiggle_torque*np.sum([np.sin((2*np.pi*f)*(t-t0)) for f in freqs])
-            motor_state = await robot.set_position_rad(
-                motor_setpoint, 
-                kp_scale = kp_scale, 
-                kd_scale = kd_scale, 
-                feedforward_torque = motor_torque,
-                query=True)
-            t = time.perf_counter()
+        input('press anything to continue')
+        for j, x0 in enumerate(motor_pos):
+            motor_angle = []
+            motor_torque = []
+            hsa_len = []
+            times = []
+            motor_state = None
+            t = t0 = time.perf_counter()
+            y = lambda t: x0 + sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
+            jiggle_lengths = []
+            while (t-t0) < T:
+                motor_setpoint = y(t)
+                motor_state = await robot.set_position_rad(motor_setpoint, query=True)
+                t = time.perf_counter()
+                if motor_state is not None:
+                    x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
+                    f = forward_kinematics(robot.kinematics, x_rad)
+                    motor_angle.append(x_rad)
+                    motor_torque.append(motor_state.torque)
+                    hsa_len.append(f[1])
+                    times.append(t)
 
-            if motor_state is not None:
-                x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
-                f = forward_kinematics(robot.kinematics, x_rad)
-                motor_angle.append(x_rad)
-                hsa_len.append(f[1])
-                ff_torque.append(motor_torque)
-                times.append(t)
-
-        # await robot.set_position_rad(x_rad, feedforward_torque=0., kp_scale = 0., kd_scale = 0.)
-        await robot.motor.controller.set_stop()
-        data['motor_setpoint'].append(motor_setpoint)
-        data['motor_angle'].append(motor_angle)
-        data['hsa_len'].append(hsa_len)
-        data['ff_torque'].append(ff_torque)
-        data['times'].append(times)
-        data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
-        print(np.average(hsa_len))
+            await robot.motor.controller.set_stop()
+            data['motor_angle'].append(motor_angle)
+            data['motor_torque'].append(motor_torque)
+            data['hsa_len'].append(hsa_len)
+            data['times'].append(times)
+            data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
+            print(np.average(hsa_len))
 
     # save data to file
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
