@@ -34,53 +34,57 @@ async def main(experiment_config):
     motor_min_deg = experiment_config['motor_min_deg']
     motor_max_deg = experiment_config['motor_max_deg']
     N_setpoints = experiment_config['N_setpoints']
+    N_rest_len_samples = experiment_config['N_rest_len_samples']
     theta = np.linspace(-np.pi,0,N_setpoints)
-    a = (servo_min+servo_max)/2
-    b = (servo_max-servo_min)/2
-    servo_pos = np.array([a+b*np.cos(t) for t in theta])
-    a = (motor_min_deg + motor_max_deg)/2
-    b = (motor_max_deg-motor_min_deg)/2
-    motor_pos = np.array([a+b*np.cos(t) for t in theta])
+    # a = (servo_min+servo_max)/2
+    # b = (servo_max-servo_min)/2
+    # servo_pos = np.array([a+b*np.cos(t) for t in theta])
+    servo_pos = np.linspace(servo_min, servo_max, N_setpoints)
+    # a = (motor_min_deg + motor_max_deg)/2
+    # b = (motor_max_deg-motor_min_deg)/2
+    # motor_pos = np.array([a+b*np.cos(t) for t in theta])
+    motor_pos = np.linspace(motor_min_deg, motor_max_deg, N_setpoints)
 
-    servo_pos = np.array(experiment_config['servo_pos'], dtype=int)
-    angle = np.zeros(len(servo_pos), dtype=float)
     data = {'motor_angle' : [],
             'motor_torque' : [],
             'hsa_angle' : [], 
+            'hsa_rest_len' : [],
             'hsa_len' : [],
+            'dldtheta': [],
             'times' : []}
     for i,p in enumerate(servo_pos):
-        robot.servo.write_setpoint(int(p))
         await robot.motor.controller.set_stop()
-        input('press anything to continue')
+        robot.servo.write_setpoint(int(p))
+        input('')
+        motor_angle = []
+        motor_torque = []
+        hsa_len = []
+        dl_dtheta = []
+        times = []
+        motor_state = None
         for j, x0 in enumerate(motor_pos):
-            motor_angle = []
-            motor_torque = []
-            hsa_len = []
-            times = []
-            motor_state = None
             t = t0 = time.perf_counter()
-            y = lambda t: x0 + sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
-            jiggle_lengths = []
+            y = lambda t: x0 + amplitude*sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
             while (t-t0) < T:
                 motor_setpoint = y(t)
-                motor_state = await robot.set_position_rad(motor_setpoint, query=True)
+                motor_state = await robot.set_position_deg(motor_setpoint, query=True)
                 t = time.perf_counter()
                 if motor_state is not None:
                     x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
-                    f = forward_kinematics(robot.kinematics, x_rad)
+                    f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
                     motor_angle.append(x_rad)
                     motor_torque.append(motor_state.torque)
                     hsa_len.append(f[1])
+                    dl_dtheta.append(df[1])
                     times.append(t)
-
-            await robot.motor.controller.set_stop()
-            data['motor_angle'].append(motor_angle)
-            data['motor_torque'].append(motor_torque)
-            data['hsa_len'].append(hsa_len)
-            data['times'].append(times)
-            data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
-            print(np.average(hsa_len))
+        await robot.motor.controller.set_stop()
+        data['motor_angle'].append(motor_angle)
+        data['motor_torque'].append(motor_torque)
+        data['hsa_len'].append(hsa_len)
+        data['dldtheta'].append(dl_dtheta)
+        data['times'].append(times)
+        data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
+        print(np.average(hsa_len))
 
     # save data to file
     prefix = os.path.join(root_folder, experiment_config['data_folder'])

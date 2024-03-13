@@ -1,0 +1,6 @@
+servo_pulse: [500, 1000, 1500]
+robot_mass: 1.2
+payload_mass: [0.,1.,2.]
+duration: 10.
+hardware: resources/hardware.yaml
+data_folder: data/standing_break

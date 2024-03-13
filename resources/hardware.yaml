@@ -16,7 +16,7 @@ kinematics:
   a: .07
   b: .1524
   c: .3
-  d: .01
+  d: -0.001
 
 limits:
   motor_min_angle_deg: -50.

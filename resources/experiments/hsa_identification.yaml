@@ -1,10 +1,11 @@
-servo_min_pulse: 1200
-servo_max_ulse: 2200
-motor_min_deg: -40
-motor_max_deg: 0
+servo_min_pulse: 1100
+servo_max_pulse: 1900
+motor_min_deg: -35
+motor_max_deg: 5
 N_setpoints: 5
+jiggle_torque: .15
 jiggle_frequencies: [2.25,3.]
-jiggle_amplitude: 10
+jiggle_amplitude: 5
 jiggle_time: 3.
 hardware: resources/hardware.yaml
 data_folder: data/hsa_identification
