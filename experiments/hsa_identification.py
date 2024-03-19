@@ -34,15 +34,7 @@ async def main(experiment_config):
     motor_min_deg = experiment_config['motor_min_deg']
     motor_max_deg = experiment_config['motor_max_deg']
     N_setpoints = experiment_config['N_setpoints']
-    N_rest_len_samples = experiment_config['N_rest_len_samples']
-    theta = np.linspace(-np.pi,0,N_setpoints)
-    # a = (servo_min+servo_max)/2
-    # b = (servo_max-servo_min)/2
-    # servo_pos = np.array([a+b*np.cos(t) for t in theta])
     servo_pos = np.linspace(servo_min, servo_max, N_setpoints)
-    # a = (motor_min_deg + motor_max_deg)/2
-    # b = (motor_max_deg-motor_min_deg)/2
-    # motor_pos = np.array([a+b*np.cos(t) for t in theta])
     motor_pos = np.linspace(motor_min_deg, motor_max_deg, N_setpoints)
 
     data = {'motor_angle' : [],

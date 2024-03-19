@@ -4,6 +4,7 @@ from hsa_hopper.servo import Servo
 from hsa_hopper.kinematics import *
 from hsa_hopper.pd_controller import *
 from hsa_hopper.constants import _REV_TO_RAD, _RAD_TO_DEG, _REV_TO_DEG
+from hsa_hopper.hsa_model import HSAPotential, load_potential, save_potential
 
 import moteus_pi3hat
 import yaml

@@ -1,7 +1,8 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 30.
+  calib_pos_deg: 35.
+
 
 pdb:
   bus: 2
@@ -16,7 +17,7 @@ kinematics:
   a: .07
   b: .1524
   c: .3
-  d: -0.001
+  d: 0.001
 
 limits:
   motor_min_angle_deg: -50.
