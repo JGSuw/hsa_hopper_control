@@ -1,4 +1,0 @@
-moteus==0.3.65
-moteus-pi3hat==0.3.29
-pyserial
-asyncio

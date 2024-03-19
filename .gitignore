@@ -1,2 +1,3 @@
 **/*.pickle
-__pychache__
+__pycache__
+**/*.egg-info

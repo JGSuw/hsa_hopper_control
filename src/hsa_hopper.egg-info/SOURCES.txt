@@ -1,9 +1,0 @@
-pyproject.toml
-src/hsa_hopper/Motor.py
-src/hsa_hopper/PDB.py
-src/hsa_hopper/__init__.py
-src/hsa_hopper.egg-info/PKG-INFO
-src/hsa_hopper.egg-info/SOURCES.txt
-src/hsa_hopper.egg-info/dependency_links.txt
-src/hsa_hopper.egg-info/requires.txt
-src/hsa_hopper.egg-info/top_level.txt

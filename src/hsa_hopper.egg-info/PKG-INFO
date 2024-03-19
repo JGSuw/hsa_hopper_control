@@ -1,7 +1,0 @@
-Metadata-Version: 2.1
-Name: hsa-hopper
-Version: 0.0.1
-Requires-Dist: moteus==0.3.65
-Requires-Dist: moteus-pi3hat==0.3.29
-Requires-Dist: pyserial
-Requires-Dist: asyncio
