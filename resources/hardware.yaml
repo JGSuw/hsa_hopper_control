@@ -1,7 +1,7 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 35.
+  calib_pos_deg: 29.
 
 
 pdb:
@@ -17,8 +17,21 @@ kinematics:
   a: .07
   b: .1524
   c: .3
-  d: 0.001
+  d: 0.
 
 limits:
   motor_min_angle_deg: -50.
   motor_max_angle_deg: 50.
+
+ati_sensor:
+  ip: '10.42.0.3'
+  counts_per_force: 1000000
+  counts_per_torque: 1000000
+  Fx_range: 660
+  Fy_range: 660
+  Fz_range: 1980
+  Mx_range: 60
+  My_range: 60
+  Mz_range: 60
+  rdt_output_rate: 3500
+  socket_timeout: .01
