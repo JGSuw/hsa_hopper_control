@@ -1,0 +1,14 @@
+N_setpoints: 12
+data_folder: data/hsa_identification
+hardware: resources/hardware.yaml
+jiggle_amplitude: 5
+jiggle_frequencies:
+- 2.25
+- 3.0
+jiggle_time: 3.0
+jiggle_torque: 0.15
+motor_max_deg: 5
+motor_min_deg: -35
+note: No spikes.
+servo_max_pulse: 1767
+servo_min_pulse: 1233

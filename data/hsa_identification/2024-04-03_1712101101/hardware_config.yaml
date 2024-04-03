@@ -1,0 +1,31 @@
+ati_sensor:
+  Fx_range: 660
+  Fy_range: 660
+  Fz_range: 1980
+  Mx_range: 60
+  My_range: 60
+  Mz_range: 60
+  counts_per_force: 1000000
+  counts_per_torque: 1000000
+  ip: 10.42.0.3
+  rdt_output_rate: 3500
+  socket_timeout: 0.01
+kinematics:
+  a: 0.07
+  b: 0.1524
+  c: 0.3
+  d: 0.0
+limits:
+  motor_max_angle_deg: 50.0
+  motor_min_angle_deg: -50.0
+motor:
+  bus: 1
+  calib_pos_deg: -10.0
+  id: 1
+pdb:
+  bus: 2
+  id: 32
+servo:
+  baudrate: 115200
+  gear_ratio: 0.25
+  port: /dev/ttyACM0
