@@ -51,7 +51,7 @@ class Servo:
             raise ValueError(f'setpoint {setpoint} is out of bounds [{self._MIN_PULSE}, {self._MAX_PULSE}]')
         
     def pulse_to_angle(self, pulse):
-        return (self._ANGLE_RANGE / (self._MAX_PULSE-self._MIN_PULSE) / 2) * self._gear_ratio * (pulse - self._ZERO_SETPOINT)
+        return (self._ANGLE_RANGE / (self._MAX_PULSE-self._MIN_PULSE)) * self._gear_ratio * (pulse - self._ZERO_SETPOINT)
     
     def angle_to_pulse(self, angle):
-        return int((2 * (self._MAX_PULSE-self._MIN_PULSE) / self._ANGLE_RANGE) / self._gear_ratio * angle + self._ZERO_SETPOINT)
+        return int(((self._MAX_PULSE-self._MIN_PULSE) / self._ANGLE_RANGE) / self._gear_ratio * angle + self._ZERO_SETPOINT)
