@@ -1,6 +1,6 @@
 import asyncio
 import numpy as np
-from hsa_hopper.constants import _RAD_TO_DEG, _REV_TO_DEG, _REV_TO_RAD
+from .constants import _RAD_TO_DEG, _REV_TO_DEG, _REV_TO_RAD
 
 class PDController():
     def __init__(self, kpy, kdy, uy, kpx, kdx, t_init, x_init):

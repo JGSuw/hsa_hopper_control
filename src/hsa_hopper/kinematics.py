@@ -12,15 +12,18 @@ class KinematicParameters:
         self.c = c
         self.d = d
 
+    def attribute_dict(self):
+        return {key: self.__dict__[key] for key in self.__dict__}
+
 # Computes forward kinematics, jacobian, and hessian.
 def forward_kinematics(p: KinematicParameters, theta: float, jacobian = False, hessian = False):
-    c_theta = math.cos(theta)
-    s_theta = math.sin(theta)
+    c_theta = np.cos(theta)
+    s_theta = np.sin(theta)
     x = p.a/p.b*c_theta
 
-    phi = math.acos(x)
-    c_phi = math.cos(phi)
-    s_phi = math.sin(phi)
+    phi = np.arccos(x)
+    c_phi = np.cos(phi)
+    s_phi = np.sin(phi)
     y = -p.a*s_theta+p.b*s_phi
     L = p.c - y - p.d
     if not jacobian and not hessian:
@@ -28,7 +31,7 @@ def forward_kinematics(p: KinematicParameters, theta: float, jacobian = False, h
     
 
     dx_dtheta = -p.a/p.b*s_theta
-    dphi_dx = -1/math.sqrt(1-x**2)
+    dphi_dx = -1/np.sqrt(1-x**2)
     dphi_dtheta = dphi_dx*dx_dtheta
     dy_dtheta = -p.a*c_theta + p.b*c_phi*dphi_dtheta
     if not hessian:

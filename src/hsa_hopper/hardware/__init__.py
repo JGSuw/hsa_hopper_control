@@ -1,10 +1,8 @@
-from hsa_hopper.motor import *
-from hsa_hopper.pdb import *
-from hsa_hopper.servo import Servo
-from hsa_hopper.kinematics import *
-from hsa_hopper.pd_controller import *
+from .motor import Motor
+from .pdb import PowerDistributionBoard
+from .servo import Servo
+from ..kinematics import KinematicParameters, forward_kinematics
 from hsa_hopper.constants import _REV_TO_RAD, _RAD_TO_DEG, _REV_TO_DEG
-from hsa_hopper.force_sensor import ForceSensorProcess
 
 import moteus_pi3hat
 import yaml
@@ -65,7 +63,3 @@ class Robot:
 
     def forward_kinematics(self, motor_pos_rad):
         return forward_kinematics(self.kinematics, motor_pos_rad)
-
-
-if __name__ == "__main__":
-    pass

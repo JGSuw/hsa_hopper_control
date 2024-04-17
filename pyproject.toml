@@ -7,7 +7,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hsa_hopper"
 version = "0.0.1"
+requires-python = ">3.8"
 dependencies = [
+    "numpy",
+    "scipy",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+hardware = [
     "moteus==0.3.65",
     "moteus-pi3hat==0.3.29",
     "pyserial",
@@ -15,5 +23,5 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["hsa_hopper"]

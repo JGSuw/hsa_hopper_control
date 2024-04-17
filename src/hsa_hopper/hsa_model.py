@@ -1,13 +1,12 @@
 import numpy as np
-import pickle
+import yaml
 import os
-
 
 class HSAPotential:
     def __init__(self, 
-                 v: np.array, # kernel weights i.e. estimates of potential at configuration
-                 y: np.array, # sample configurations corresponding to weights in v
-                 s: float):   # length-scale parameter used by kernels
+                 v: np.ndarray, # kernel weights i.e. estimates of potential at configuration
+                 y: np.ndarray, # sample configurations corresponding to weights in v
+                 s: float):     # length-scale parameter used by kernels
         self.N = y.shape[0]
         self.v = v
         self.y = y
@@ -33,21 +32,21 @@ class HSAPotential:
 
     def d2V(self, z: np.array):
         return sum(self.v[i]*self.d2k(z,i) for i in range(self.N))
+    
+    def attribute_dict(self):
+        attributes = {'v': self.v.tolist(), 'y': self.y.tolist(), 's': self.s}
+        return attributes
 
 def load_potential(path:os.path):
     with open(path, 'rb') as f:
-        data = pickle.load(f)
+        attributes = yaml.load(f, yaml.Loader)
     return HSAPotential(
-        data['v'],
-        data['y'],
-        data['s']
+        np.array(attributes['v']),
+        np.array(attributes['y']),
+        attributes['s']
     )
 
 def save_potential(potential: HSAPotential, path: os.path):
-    data = {
-        'v': potential.v,
-        'y': potential.y,
-        's': potential.s
-    }
+    attributes = potential.attribute_dict()
     with open(path, 'wb') as f:
-        pickle.dump(data, f)
+        yaml.dump(attributes, f, yaml.Dumper)
