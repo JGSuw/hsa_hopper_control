@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, OptimizeResult
 import yaml
 import hsa_hopper.dynamics as dynamics
 from .dynamics import DynamicsParameters
@@ -168,6 +168,32 @@ class HopBVP:
         self.dynamic_params = dynamic_params
         self.collo_params = collo_params
 
+    def attribute_dict(self):
+        attributes = {}
+        for key in self.__dict__:
+            value = self.__dict__[key]
+            if type(value) == np.ndarray:
+                attributes[key] = value.tolist()
+            elif type(value) == DynamicsParameters:
+                attributes[key] = value.attribute_dict()
+            elif type(value) == CollocationParameters:
+                attributes[key] = value.attribute_dict()
+            elif type(value) == OptimizeResult:
+                sub_attr = {}
+                for subkey in dir(value):
+                    subvalue = getattr(value, subkey)
+                    if type(subvalue) == np.ndarray:
+                        sub_attr[subkey] = subvalue.tolist()
+                    else:
+                        try:
+                            if str(subvalue).isnumeric():
+                                sub_attr[subkey] = subvalue
+                        except:
+                            pass
+                attributes[key] = sub_attr
+        return attributes
+
+
     def boundary_conditions(self, z):
         '''
         Computes boundary value constraints on initial and final state given
@@ -317,7 +343,7 @@ class HopBVP:
         return _cost*scale, _grad*scale
 
     def optimize(self, initial_guess, options={}):
-        result = minimize(self.cost, initial_guess, method='SLSQP', jac=True, 
+        self.result = minimize(self.cost, initial_guess, method='SLSQP', jac=True, 
                 constraints = [
                 {'type' : 'eq', 'fun': self.boundary_conditions},
                 {'type' : 'eq', 'fun': self.continuity_constraints},
@@ -329,6 +355,7 @@ class HopBVP:
         Ns = self.collo_params.Ns
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
-        result.c_mat = np.reshape(result.x[:Ns*Nx],(Ns,Nx))
-        result.d_mat = np.reshape(result.x[Ns*Nx:],(Ns,Nu))
-        return result
+        self.result.c_mat = np.reshape(self.result.x[:Ns*Nx],(Ns,Nx))
+        self.result.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu))
+
+        return self.result
