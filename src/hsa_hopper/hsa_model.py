@@ -36,15 +36,17 @@ class HSAPotential:
     def attribute_dict(self):
         attributes = {'v': self.v.tolist(), 'y': self.y.tolist(), 's': self.s}
         return attributes
+    
+    def make_from_dict(attributes):
+        return HSAPotential(
+            np.array(attributes['v']), 
+            np.array(attributes['y']), 
+            attributes['s'])
 
 def load_potential(path:os.path):
     with open(path, 'rb') as f:
         attributes = yaml.load(f, yaml.Loader)
-    return HSAPotential(
-        np.array(attributes['v']),
-        np.array(attributes['y']),
-        attributes['s']
-    )
+    return HSAPotential.make_from_dict(attributes)
 
 def save_potential(potential: HSAPotential, path: os.path):
     attributes = potential.attribute_dict()

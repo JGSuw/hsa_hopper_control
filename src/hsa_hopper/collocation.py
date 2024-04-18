@@ -11,6 +11,15 @@ def interp_covector(t, a, b, N, ord=0):
     This scheme uses a symmetric polynomial basis centered at the midpoint (b+a)/2.
     Monomial degree increases with the index, so that T[i] = s(t)**i, and s(t) is the time
     parameterization t -> (2/(b-a))*(t-(b+a)/2)
+
+        Inputs: 
+        t (float): time to evaluate interpolation at
+        a (float): left-side of interpolation interval
+        b (float): right-side of interpolation interval
+        N (int): dimension of polynomial basis - highest monomial degree is N-1
+
+        Returns:
+        T (np.ndarray): (1,N) covector.
     """
     T = np.zeros((1,N))
     scale = 2/(b-a)
@@ -55,8 +64,8 @@ class CollocationParameters:
 
             Parameters:
                 Ns: number of splines
-                N: dimension of position interpolations
-                Nu: dimension of control interpolations
+                Nx: dimension of position (x) interpolation
+                Nu: dimension of control (u) interpolation
                 T: time interval, BVP is solved for t in range (0,T)
 
             Returns: dictionary of parameters that define the solution space
@@ -77,42 +86,61 @@ class CollocationParameters:
                 attributes[key] = value
         return attributes
 
+    def make_from_dict(attributes):
+        return CollocationParameters(
+                attributes['Ns'],
+                attributes['Nx'],
+                attributes['Nu'],
+                attributes['a'],
+                attributes['b']
+                )
+
 class PiecewiseInterpolation:
-    def __init__(self, c_mat: np.ndarray, d_mat: np.ndarray, collo_params: CollocationParameters):
-        self.c_mat = c_mat
-        self.d_mat = d_mat
-        self.__dict__.update(collo_params.attribute_dict())
+    def __init__(self,
+                 mat: np.array, # ndarray with shape (M,N)
+                 tk: np.array,  # ndarray with shape (M+1,)
+    ):
+        """
+        Create a piecewise polynomial interpolation of a scalar function.
+
+        Inputs:
+            mat (np.ndarray): 2D array with shape (M,N) of interpolation coefficients
+            tk (np.ndarray): 1D array with shape (M+1,) of knot points
+        """
+        if len(mat.shape) != 2:
+            raise ValueError('mat must be 2D ndarray')
+        self.mat = mat
+        self.M, self.N = mat.shape
+        if tk.shape != (self.M+1,):
+            raise ValueError('tk must be ndarray with length mat.shape[0]+1')
+        self.tk = tk
 
     def evaluate(self, t):
-        try: 
-            idx = next(i-1 for i in range(1,self.Ns+1) if t <= self.tk[i])
-        except StopIteration:
-            idx = self.Ns-1
-        T = interp_covector(t,self.tc[idx,0],self.tc[idx,-1],self.Nz)
-        return (T[0,:]@self.c_mat[idx,:]), (T[0,:self.Nu]@self.d_mat[idx,:])
-    
-    def dump(self, path):
-        attrs = {}
-        for key in self.__dict__:
-            value = self.__dict__[key]
-            if type(value) == np.ndarray:
-                attrs[key] = value.tolist()
-            else:
-                attrs[key] = value
-        with open(path, 'w') as f:
-            yaml.dump(attrs, f, yaml.Dumper)
+        """
+        Evaluates the interpolation at time t.
 
-    def load(path):
-        interp = PiecewiseInterpolation(None,None,{})
-        with open(path, 'r') as f:
-            attrs = yaml.load(f, yaml.Loader)
-        for key in attrs:
-            value = attrs[key]
-            if type(value) == list:
-                interp.__dict__[key] = np.array(value)
-            else:
-                interp.__dict__[key] = value
-        return interp
+            Inputs:
+            t (float): time to evaluate
+
+            Returns:
+            x (float): value of interpolation x(t)
+        """
+        try: 
+            idx = next(i-1 for i in range(1,self.M+1) if t <= self.tk[i])
+        except StopIteration:
+            idx = self.N-1
+        T = interp_covector(t,self.tk[idx],self.tk[idx+1],self.N)
+        return (T[0,:]@self.mat[idx,:])
+
+    def attribute_dict(self):
+        return {'mat': self.mat.tolist(), 'tk': self.tk.tolist()}
+
+    def make_from_dict(attributes):
+        return PiecewiseInterpolation(
+                np.array(attributes['mat']),
+                np.array(attributes['tk'])
+                )
+    
             
 def fit_interpolation(x: np.ndarray, u: float, t: float, collo_params: CollocationParameters):
     """
@@ -139,7 +167,7 @@ def fit_interpolation(x: np.ndarray, u: float, t: float, collo_params: Collocati
     for i in range(Ns):
         for j in range(Nx):
             A[Nx*i+j,Nx*i:Nx*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nx)
-    c,err,rank,vectors = np.linalg.lstsq(A,b)
+    c,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
     c_mat = np.reshape(c,(Ns,Nx))
 
     # solve for u interpolation
@@ -149,9 +177,11 @@ def fit_interpolation(x: np.ndarray, u: float, t: float, collo_params: Collocati
     for i in range(Ns):
         for j in range(Nu):
             A[Nu*i+j,Nu*i:Nu*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nu)
-    d,err,rank,vectors = np.linalg.lstsq(A,b)
+    d,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
     d_mat = np.reshape(d,(Ns,Nu))
-    return PiecewiseInterpolation(c_mat,d_mat,collo_params)
+    x_interp = PiecewiseInterpolation(c_mat,tk)
+    u_interp = PiecewiseInterpolation(d_mat,tk)
+    return x_interp, u_interp
 
 class HopBVP:
     def __init__(self, 
@@ -355,7 +385,7 @@ class HopBVP:
         Ns = self.collo_params.Ns
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
-        self.result.c_mat = np.reshape(self.result.x[:Ns*Nx],(Ns,Nx))
-        self.result.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu))
+        self.c_mat = np.reshape(self.result.x[:Ns*Nx],(Ns,Nx))
+        self.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu))
 
         return self.result

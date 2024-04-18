@@ -26,7 +26,7 @@ class DynamicsParameters:
             else:
                 attributes[key] = value
         return attributes
-    
+
 def evaluate(position_rad: float, 
              velocity_rad: float, 
              input: float, 
