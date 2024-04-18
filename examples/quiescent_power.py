@@ -1,6 +1,6 @@
 
 import asyncio
-import hsa_hopper
+import hsa_hopper.hardware
 import os
 import yaml
 import sys
@@ -12,7 +12,7 @@ async def main(note):
     root_folder = os.path.dirname(this_folder) 
     data_folder = os.path.join(root_folder, "data")
     config_path = os.path.join(root_folder, "resources/hardware.yaml")
-    robot = hsa_hopper.Robot(config_path) 
+    robot = hsa_hopper.hardware.Robot(config_path) 
     duration = 10. # measure power for 10 seconds
     E0 = (await robot.pdb.get_power_state()).energy
     t0 = time.perf_counter_ns()

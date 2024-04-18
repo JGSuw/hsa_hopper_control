@@ -1,4 +1,5 @@
-from hsa_hopper import Robot, forward_kinematics
+from hsa_hopper.hardware import Robot
+from hsa_hopper.kinematics import forward_kinematics
 import yaml
 import os
 import asyncio

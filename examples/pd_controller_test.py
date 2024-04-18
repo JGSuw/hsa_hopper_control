@@ -1,4 +1,5 @@
-from hsa_hopper import *
+from hsa_hopper.hardware import Robot
+from hsa_hopper.pd_controller import PDController
 import math
 import yaml
 import numpy as np
@@ -59,7 +60,7 @@ async def main():
     interp = pd_controller.interpolate()
 
     # test gain conversion
-    f, df, d2f = forward_kinematics(robot.kinematics, x_window[-1])
+    f, df, d2f = forward_kinematics(robot.kinematics, interp)
     x_rev, kp_scale, kd_scale, torque = pd_controller.gain_conversion(interp, f[0], df[0], d2f[0])
 
     # try running this for a short time

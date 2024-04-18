@@ -1,4 +1,4 @@
-from hsa_hopper import Robot
+from hsa_hopper.hardware import Robot
 import yaml
 import os
 import asyncio

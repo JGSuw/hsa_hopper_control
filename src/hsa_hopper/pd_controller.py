@@ -41,12 +41,12 @@ class PDController():
         return x
     
     def gain_conversion(self, x_rad, f, df, d2f):
-        ux = df*self.uy - df*self.kpy*f
-        kpx = d2f*(self.kpy*f-self.uy) + df*self.kpy*df
+        ux = df*(self.uy - self.kpy*f)
+        kpx = max(df*self.kpy*df-d2f*(self.uy-self.kpy*f),0)
         kdx = df*self.kdy*df
         kp_scale = kpx/self.kpx_config
         kd_scale = kdx/self.kdx_config
-        return (x_rad/_REV_TO_RAD, kp_scale, kd_scale, ux)
+        return (x_rad/REV_TO_RAD, kp_scale, kd_scale, ux)
     
     def update_window(self, x_rad, t):
         self.x_window[0] = self.x_window[1]

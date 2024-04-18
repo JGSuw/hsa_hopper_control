@@ -1,6 +1,6 @@
 import asyncio
 import yaml
-import hsa_hopper
+import hsa_hopper.hardware
 import time
 import sys
 import os
