@@ -9,11 +9,12 @@ class DynamicsParameters:
             bx: float,
             by: float,
             Kx: float,
+            x0: float,
             kinematics: KinematicParameters,
             hsa_potential = None,
             psi = None
     ):
-        self.m, self.J, self.bx, self.by, self.Kx, self.psi = m,J,bx,by,Kx,psi
+        self.m, self.J, self.bx, self.by, self.Kx, self.x0, self.psi = m,J,bx,by,Kx,x0,psi
         self.kinematics = kinematics
         self.hsa_potential = hsa_potential
     
@@ -53,7 +54,7 @@ def evaluate(position_rad: float,
     inertia = (params.J+params.m*dy**2)
     coriolis = params.m*d2y*velocity_rad**2
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
-    potential = params.Kx*position_rad + params.m*g*dy
+    potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
     if params.hsa_potential is not None:
         potential += dl*params.hsa_potential.dV(np.array([l,params.psi]))[0]
     acceleration_rad = (input-potential-coriolis-rayleigh)/inertia

@@ -333,6 +333,7 @@ class HopBVP:
         Nu = self.collo_params.Nu
         tc = self.collo_params.tc
         Kx =  self.dynamic_params.Kx
+        x0 = self.dynamic_params.x0
         lb = self.lb
         ub = self.ub
         data = np.zeros(4*Ns*Nx)
@@ -346,30 +347,57 @@ class HopBVP:
                 data[4*Nx*i+j] = theta - lb[0]
                 data[4*Nx*i+j+1] = ub[0] - theta
                 u = (I[:,:Nu]@d)[0]
-                data[4*Nx*i+2] = u - Kx*theta - lb[1]
-                data[4*Nx*i+3] = ub[1] - u + Kx*theta
+                data[4*Nx*i+2] = u - Kx*(theta-x0) - lb[1]
+                data[4*Nx*i+3] = ub[1] - u + Kx*(theta-x0)
             return data
     
     def cost(self, z):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
-        tc = self.collo_params.tc
+        tk = self.collo_params.tk
         Kx =  self.dynamic_params.Kx
+        x0 = self.dynamic_params.x0
         _grad = np.zeros(z.shape)
         _cost = 0
-        scale = 1/(tc[-1,-1]-tc[0,0])
+        scale = 1/(tk[-1]-tk[0])
         for i in range(Ns):
+            # unpacking z into u and x parts
             c = z[Nx*i:Nx*(i+1)]
             d = z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
-            I = quad_int_tensor(tc[i,0],tc[i,-1],Nx)
-            _cost += (Kx**2)*(c@(I@c))
-            _grad[Nx*i:Nx*(i+1)] += 2*(Kx**2)*(I@c)
-            _cost -= (2*Kx)*d@(I[:Nu,:]@c)
-            _grad[Nx*i:Nx*(i+1)] -= (2*Kx)*(d@I[:Nu,:])
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] -= (2*Kx)*(c@I[:,:Nu])
+
+            # quadratic integration tensor
+            I = quad_int_tensor(tk[i],tk[i+1],Nx)
+
+            # tau**2 = (u+Kx*(x0-x))**2
+            # expanding...
+            # u**2 + Kx**2 * (x0**2 -2*x0*x + x**2) + 2*Kx*u*(x0-x)
+
+            # u**2 term
             _cost += d@(I[:Nu,:Nu]@d)
+            # grad wrt to u
             _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*I[:Nu,:Nu]@d
+
+            # (Kx*x0)**2 term, no grad
+            _cost += (Kx*x0)*I[0,0]*(Kx*x0)
+
+            # -2*Kx**2 * (x0*x) term
+            _cost -= 2*(Kx*x0)*(I[0,:]@(Kx*c))
+            # grad wrt to x
+            _grad[Nx*i:Nx*(i+1)] -= 2*(Kx*x0)*(I[0,:]*Kx)
+
+            # (Kx*x)**2 term
+            _cost += (Kx*c)@(I@(Kx*c))
+            # grad wrt to x
+            _grad[Nx*i:Nx*(i+1)] += 2*Kx*I@(Kx*c)
+
+            # 2*Kx*u*(x0-x) term
+            _cost += 2*Kx*(d@(I[:Nu,0]*x0-I[:Nu,:]@c))
+            # grad wrt to u
+            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*Kx*(I[:Nu,0]*x0-I[:Nu,:]@c)
+            # grad wrt to x
+            _grad[Nx*i:Nx*(i+1)] -= 2*Kx*(d@I[:Nu,:])
+
         return _cost*scale, _grad*scale
 
     def optimize(self, initial_guess, options={}):
