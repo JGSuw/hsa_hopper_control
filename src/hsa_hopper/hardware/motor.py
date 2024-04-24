@@ -69,4 +69,4 @@ class Motor():
             b'conf get servo.pid_position.kd',
             allow_any_response=True
         )).decode('utf8'))
-        return (kp*_REV_TO_RAD, kd*_REV_TO_RAD)
+        return (kp/_REV_TO_RAD, kd/_REV_TO_RAD)

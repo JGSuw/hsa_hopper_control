@@ -2,6 +2,8 @@ from .kinematics import KinematicParameters, forward_kinematics
 from .hsa_model import HSAPotential
 import numpy as np
 g = 9.81
+_FLIGHT_MODE = 1
+_STANCE_MODE = 2
 class DynamicsParameters:
     def __init__(self,
             m: float,
@@ -59,3 +61,4 @@ def evaluate(position_rad: float,
         potential += dl*params.hsa_potential.dV(np.array([l,params.psi]))[0]
     acceleration_rad = (input-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
+

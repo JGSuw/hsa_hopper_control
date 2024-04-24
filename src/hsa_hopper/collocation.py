@@ -128,7 +128,7 @@ class PiecewiseInterpolation:
         try: 
             idx = next(i-1 for i in range(1,self.M+1) if t <= self.tk[i])
         except StopIteration:
-            idx = self.N-1
+            idx = self.M-1
         T = interp_covector(t,self.tk[idx],self.tk[idx+1],self.N)
         return (T[0,:]@self.mat[idx,:])
 
@@ -267,7 +267,7 @@ class HopBVP:
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
         tk = self.collo_params.tk
-        data = np.zeros(4*(Ns-1))
+        data = np.zeros(3*(Ns-1))
         for i in range(Ns-1):
             c0, d0 = z[Nx*i:Nx*(i+1)], z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
             a0,b0 = tk[i], tk[i+1]
@@ -279,9 +279,9 @@ class HopBVP:
             # velocity
             data[4*i+1] = (interp_covector(t,a0,b0,Nx,ord=1)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=1)@c1)[0]
             # acceleration
-            data[4*i+2] = (interp_covector(t,a0,b0,Nx,ord=2)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=2)@c1)[0]
+            #data[4*i+2] = (interp_covector(t,a0,b0,Nx,ord=2)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=2)@c1)[0]
             # control
-            data[4*i+3] = (interp_covector(t,a0,b0,Nu)@d0)[0] - (interp_covector(t,a1,b1,Nu)@d1)[0]
+            data[3*i+3] = (interp_covector(t,a0,b0,Nu)@d0)[0] - (interp_covector(t,a1,b1,Nu)@d1)[0]
         return data
 
     def dynamic_constraints(self, z):
@@ -347,8 +347,8 @@ class HopBVP:
                 data[4*Nx*i+j] = theta - lb[0]
                 data[4*Nx*i+j+1] = ub[0] - theta
                 u = (I[:,:Nu]@d)[0]
-                data[4*Nx*i+2] = u - Kx*(theta-x0) - lb[1]
-                data[4*Nx*i+3] = ub[1] - u + Kx*(theta-x0)
+                data[4*Nx*i+2] = u + Kx*(x0-theta) - lb[1]
+                data[4*Nx*i+3] = ub[1] - u - Kx*(x0-theta)
             return data
     
     def cost(self, z):
@@ -417,3 +417,4 @@ class HopBVP:
         self.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu))
 
         return self.result
+
