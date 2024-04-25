@@ -1,14 +1,14 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 0.
+  calib_pos_deg: -60.
 
 pdb:
   bus: 2
   id: 32
 
 servo:
-  port: /dev/ttyACM1
+  port: /dev/ttyACM0
   baudrate: 115200
   gear_ratio: .25
 

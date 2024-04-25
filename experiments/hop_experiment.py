@@ -55,12 +55,27 @@ async def main(experiment_config):
     hardware_config_path = os.path.join(root_folder, experiment_config['hardware'])
     robot = Robot(hardware_config_path)
 
+    # record initial energy from PDB
+    power_state = None
+    while power_state is None:
+        power_state = await robot.pdb.get_power_state()
+    initial_energy = power_state.energy * 3600 # convert watt-hours to joules
+
+    # measure energy consumed in 1-second to calculate quiescent power
+    t = t0_s = time.perf_counter()
+    while (t - t0_s) < 2.:
+        power_state = await robot.pdb.get_power_state()
+        if power_state is not None:
+            t = time.perf_counter()
+    quiescent_power = ((power_state.energy*3600) - initial_energy)/(t-t0_s)
+    
+    # construct the force sensor process
     with open(hardware_config_path, 'r') as f:
         hardware_config = yaml.load(f, yaml.Loader)
         ati_sensor_config = hardware_config['ati_sensor']
 
-#   ati_sensor = ForceSensorProcess(ati_sensor_config)
-#   ati_sensor.start()
+    ati_sensor = ForceSensorProcess(ati_sensor_config)
+    ati_sensor.start()
     
     #### build the HopController ####
     controller_config = experiment_config['controller']
@@ -86,8 +101,9 @@ async def main(experiment_config):
     # get preconfigured motor gains in radians
     kp_moteus, kd_moteus = await robot.motor.get_pd_gains()
     t0_s = time.perf_counter()
+
     # apply gains from mode 0 (startup) and initial setpoint
-    while (time.perf_counter()-t0_s) < 5.:
+    while (time.perf_counter()-t0_s) < 2.:
         kp_scale = controller.kp[HopController._STARTUP] / kp_moteus
         kd_scale = controller.kd[HopController._STARTUP] / kd_moteus
         x0 = controller.x0_rad[HopController._STARTUP]
@@ -97,23 +113,9 @@ async def main(experiment_config):
                 kd_scale = kd_scale, 
                 query=True)
 
-    # record energy
-    power_state = None
-    while power_state is None:
-        power_state = await robot.pdb.get_power_state()
-    energy = power_state.energy * 3600 # convert watt-hours to joules
-
     # arrays for holding data from each hop
-    this_hop_data = TrajectoryData()
-    hops = [this_hop_data]
-
-    # allocate queue for ATI measurements
-#   N_ati_measurements = int(experiment_config['duration']*ati_sensor.config['rdt_output_rate'])
-#   ati_z_force = deque(maxlen=N_ati_measurements)
-#   ati_t = deque(maxlen=N_ati_measurements)
-
-    # trigger ATI sensor
-#   ati_sensor.trigger_sensor(N_ati_measurements)
+    hops = []
+    this_hop_data = None
 
     # initialize controller
     t_s = t0_s = time.perf_counter()
@@ -132,14 +134,10 @@ async def main(experiment_config):
                 feedforward_torque = u_ff,
                 query=True
             )
-#           power_state = await robot.pdb.get_power_state()
         except BaseException as e:
             print('failed to send set_position command, check the motor limits')
             print(str(e))
             break
-
-#       if power_state is not None:
-#           energy = power_state.energy * 3600
 
         if motor_state is not None:
             # update time, compute forward kinematics
@@ -153,46 +151,54 @@ async def main(experiment_config):
 
             # partition data for recording a new epoch
             if (this_mode == HopController._STANCE) and (last_mode != HopController._STANCE):
-                this_hop_data = TrajectoryData()
+                power_state = None
+                while power_state is None:
+                    power_state = await robot.pdb.get_power_state()
+                ati_sensor.start_stream()
+                this_hop_data =  {
+                        'traj' : TrajectoryData(),
+                        'initial_energy' : power_state.energy*3600
+                        }
                 hops.append(this_hop_data)
             last_mode = this_mode
-            this_hop_data.append(
-                x_rad * _RAD_TO_DEG,
-                motor_state.position * _REV_TO_DEG,           
-                f[0],
-                f[1],
-                controller.mode,
-                u_ff,
-                0,
-                t_s
-            )
-
-            # read ATI measurements
-#           for m in ati_sensor.measurements():
-#               ati_z_force.append(m.Fz)
-#               ati_t.append(m.t)
+            if this_hop_data is not None:
+                this_hop_data['traj'].append(
+                    x_rad * _RAD_TO_DEG,
+                    motor_state.position * _REV_TO_DEG,           
+                    f[0],
+                    f[1],
+                    controller.mode,
+                    u_ff,
+                    0,
+                    t_s
+                )
 
     await robot.motor.controller.set_stop()
+    ati_sensor.stop_stream()
 
-    
+    # compute electrical energy consumed by the hops
+    hop_energy = []
+    for i in range(len(hops)-1):
+        E0 = hops[i]['initial_energy']
+        E1 = hops[i+1]['initial_energy']
+        T = hops[i]['traj'].t_s[-1] - hops[i]['traj'].t_s[0]
+        hop_energy.append((E1-E0)-quiescent_power*T)
+
     # save hop data
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
     now = time.time()
     datestring = str(datetime.date.fromtimestamp(now))
     experiment_folder = os.path.join(prefix, datestring+f'_{int(now)}')
     os.makedirs(experiment_folder)
-    for i, hop in enumerate(hops):
+    for i in range(len(hops)-1):
         path = os.path.join(experiment_folder, f'hop_{i}.csv')
-        hop.to_dataframe().to_csv(path)
+        df = hops[i]['traj'].to_dataframe().to_csv(path)
+
+    path = os.path.join(experiment_folder, 'energy.csv')
+    pd.DataFrame({'hop_energy' : hop_energy}).to_csv(path)
 
     # save force sensor data
-#   ati_sensor_path = os.path.join(experiment_folder, 'ati_sensor.csv')
-#   df = pd.DataFrame(
-#       data = {
-#           'z_force': ati_z_force,
-#           't': ati_t
-#       })
-#   df.to_csv(ati_sensor_path)
+    ati_sensor.write_data(os.path.join(experiment_folder, 'ati_measurements.csv'))
     
     # save experiment config for reproduction
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
@@ -201,16 +207,11 @@ async def main(experiment_config):
     with open(os.path.join(experiment_folder, 'hardware_config.yaml'), 'w') as f:
         yaml.dump(robot.hardware_config, f)
 
-    # flush ati_sensor data buffer
-#   ati_sensor.set_stop()
-#   time.sleep(1.)
-#   for m in ati_sensor.measurements():
-#       pass
-
-    # tell child process to stop and then join
-#   ati_sensor.join(timeout=1.)
-#   if ati_sensor.is_alive():
-#       ati_sensor.terminate()
+    # end ati_sensor child process
+    ati_sensor.stop_process()
+    ati_sensor.join(timeout=1)
+    if ati_sensor.is_alive():
+        ati_sensor.terminate()
 
 import sys
 if __name__ == "__main__":

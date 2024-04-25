@@ -15,14 +15,14 @@ async def main(note):
     robot = hsa_hopper.hardware.Robot(config_path) 
     duration = 10. # measure power for 10 seconds
     E0 = (await robot.pdb.get_power_state()).energy
-    t0 = time.perf_counter_ns()
+    t0 = time.perf_counter()
     await robot.motor.controller.set_stop()
-    while (time.perf_counter_ns()-t0)/1e9 < duration:
+    while (time.perf_counter()-t0) < duration:
         # moteus_state = await robot.motor.query_moteus_state() # querying this state to ensure the board is on
         E1 = (await robot.pdb.get_power_state()).energy
-    t1 = time.perf_counter_ns()
+    t1 = time.perf_counter()
     data = {
-        'power' : (E1-E0)/(t1-t0)*3600e9,
+        'power' : (E1-E0)/(t1-t0)*3600,
         'note' : note
     }
     now = str(datetime.datetime.fromtimestamp(time.time()))
