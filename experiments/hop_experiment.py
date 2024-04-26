@@ -22,7 +22,6 @@ class TrajectoryData():
         self.l = deque()
         self.mode = deque()
         self.u_ff = deque()
-        self.energy = deque()
         self.t_s = deque()
         
     def append(self,
@@ -32,7 +31,6 @@ class TrajectoryData():
         l,
         mode,
         u_ff,
-        energy,
         t_s
     ):
         self.x_deg.append(x_deg)
@@ -41,7 +39,6 @@ class TrajectoryData():
         self.l.append(l) 
         self.mode.append(mode)
         self.u_ff.append(u_ff)
-        self.energy.append(energy)
         self.t_s.append(t_s)
 
     def to_dataframe(self):
@@ -169,7 +166,6 @@ async def main(experiment_config):
                     f[1],
                     controller.mode,
                     u_ff,
-                    0,
                     t_s
                 )
 
