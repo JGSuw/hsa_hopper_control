@@ -1,4 +1,5 @@
-from hsa_hopper import *
+from hsa_hopper.hardware import Robot
+from hsa_hopper.kinematics import forward_kinematics
 from hsa_hopper.constants import _REV_TO_DEG, _RAD_TO_DEG
 import math
 import yaml
@@ -11,11 +12,10 @@ import pandas as pd
 import pickle
 from collections import deque
 
-
 async def main(experiment_config):
     this_folder = os.path.dirname(os.path.abspath(__file__))
-    root_folder = os.path.dirname(this_folder) 
-    
+    root_folder = os.path.dirname(this_folder)
+
     hardware_config_path = os.path.join(root_folder, experiment_config['hardware'])
     robot = Robot(hardware_config_path)
 
@@ -28,18 +28,13 @@ async def main(experiment_config):
 
     freqs = np.array(experiment_config['jiggle_frequencies'])
     T = experiment_config['jiggle_time']
-    amplitude = experiment_config['jiggle_amplitude']
-    servo_min = experiment_config['servo_min_pulse']
-    servo_max = experiment_config['servo_max_pulse']
-    motor_min_deg = experiment_config['motor_min_deg']
-    motor_max_deg = experiment_config['motor_max_deg']
-    N_setpoints = experiment_config['N_setpoints']
-    servo_pos = np.linspace(servo_min, servo_max, N_setpoints)
-    motor_pos = np.linspace(motor_min_deg, motor_max_deg, N_setpoints)
+    servo_pos = np.array(experiment_config['servo_pulse'])
+    motor_min_deg = np.array(experiment_config['motor_min_deg'])
+    motor_max_deg = np.array(experiment_config['motor_max_deg'])
 
     data = {'motor_angle' : [],
             'motor_torque' : [],
-            'hsa_angle' : [], 
+            'hsa_angle' : [],
             'hsa_rest_len' : [],
             'hsa_len' : [],
             'dldtheta': [],
@@ -54,21 +49,23 @@ async def main(experiment_config):
         dl_dtheta = []
         times = []
         motor_state = None
-        for j, x0 in enumerate(motor_pos):
-            t = t0 = time.perf_counter()
-            y = lambda t: x0 + amplitude*sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
-            while (t-t0) < T:
-                motor_setpoint = y(t)
-                motor_state = await robot.set_position_deg(motor_setpoint, query=True)
-                t = time.perf_counter()
-                if motor_state is not None:
-                    x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
-                    f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
-                    motor_angle.append(x_rad)
-                    motor_torque.append(motor_state.torque)
-                    hsa_len.append(f[1])
-                    dl_dtheta.append(df[1])
-                    times.append(t)
+        t = t0 = time.perf_counter()
+        a,b = motor_min_deg[i], motor_max_deg[i]
+        x0 = (b+a)/2
+        amplitude = (b-a)/(2*len(freqs))
+        y = lambda t: x0 + amplitude*sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
+        while (t-t0) < T:
+            motor_setpoint = y(t)
+            motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.)
+            t = time.perf_counter()
+            if motor_state is not None:
+                x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
+                f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
+                motor_angle.append(x_rad)
+                motor_torque.append(motor_state.torque)
+                hsa_len.append(f[1])
+                dl_dtheta.append(df[1])
+                times.append(t)
         await robot.motor.controller.set_stop()
         data['motor_angle'].append(motor_angle)
         data['motor_torque'].append(motor_torque)
@@ -76,7 +73,6 @@ async def main(experiment_config):
         data['dldtheta'].append(dl_dtheta)
         data['times'].append(times)
         data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
-        print(np.average(hsa_len))
 
     # save data to file
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
@@ -92,7 +88,7 @@ async def main(experiment_config):
     # save experiment config for reproduction
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
         yaml.dump(experiment_config, f)
-    
+
     with open(os.path.join(experiment_folder, 'hardware_config.yaml'), 'w') as f:
         yaml.dump(robot.hardware_config, f)
 
@@ -100,7 +96,7 @@ import sys
 if __name__ == "__main__":
     config_rel_path = sys.argv[1]
     this_folder = os.path.dirname(os.path.abspath(__file__))
-    root_folder = os.path.dirname(this_folder) 
+    root_folder = os.path.dirname(this_folder)
 
     with open(os.path.join(root_folder, config_rel_path), 'r') as f:
         experiment_config = yaml.load(f,yaml.Loader)

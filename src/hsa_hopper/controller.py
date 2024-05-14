@@ -10,6 +10,7 @@ class HopController():
                  x0_rad: np.ndarray,
                  u_interp: np.ndarray,
                  x_td_rad: float,
+                 x_lo_rad: float,
                  ):
         """
         Implements the control law for hopping, a combination of 
@@ -34,6 +35,7 @@ class HopController():
         self.x0_rad = x0_rad
         self.u_interp = u_interp
         self.x_td_rad = x_td_rad
+        self.x_lo_rad = x_lo_rad
 
     def initialize(self, t0_s: float):
         """
@@ -58,7 +60,7 @@ class HopController():
         if (not self.initialized):
             raise RuntimeError('Cannot update HopController before initialization')
         elif self.mode == HopController._STARTUP:
-            if x_rad <= self.x_td_rad:
+            if x_rad <= self.x_lo_rad:
                 self.mode = HopController._FLIGHT
                 self.t0_s = t_s
         elif self.mode == HopController._FLIGHT:
@@ -66,7 +68,7 @@ class HopController():
                 self.mode = HopController._STANCE
                 self.t0_s = t_s
         elif self.mode == HopController._STANCE:
-            if x_rad <= self.x_td_rad:
+            if x_rad <= self.x_lo_rad:
                 self.mode = HopController._FLIGHT
                 self.t0_s = t_s
         else:

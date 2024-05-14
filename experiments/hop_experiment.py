@@ -59,12 +59,14 @@ async def main(experiment_config):
     initial_energy = power_state.energy * 3600 # convert watt-hours to joules
 
     # measure energy consumed in 1-second to calculate quiescent power
+    print('measuring quiescent power')
     t = t0_s = time.perf_counter()
     while (t - t0_s) < 2.:
         power_state = await robot.pdb.get_power_state()
         if power_state is not None:
             t = time.perf_counter()
     quiescent_power = ((power_state.energy*3600) - initial_energy)/(t-t0_s)
+    print(f'quiescent power: {quiescent_power}')
     
     # construct the force sensor process
     with open(hardware_config_path, 'r') as f:
@@ -89,8 +91,9 @@ async def main(experiment_config):
             for d in controller_config['u_interp']
     ]
     # 'touchdown' motor angle in radians, relative to calibration
-    _xtd = np.array(controller_config['x_td'])
-    controller = HopController(_kp, _kd, _x0, _u, _xtd)
+    _xtd = controller_config['x_td']
+    _xlo = controller_config['x_lo']
+    controller = HopController(_kp, _kd, _x0, _u, _xtd, _xlo)
 
     # hsa setpoint
     robot.servo.write_setpoint(int(controller_config['servo_pos']))
@@ -100,6 +103,7 @@ async def main(experiment_config):
     t0_s = time.perf_counter()
 
     # apply gains from mode 0 (startup) and initial setpoint
+    print('Initializing...')
     while (time.perf_counter()-t0_s) < 2.:
         kp_scale = controller.kp[HopController._STARTUP] / kp_moteus
         kd_scale = controller.kd[HopController._STARTUP] / kd_moteus
@@ -115,9 +119,10 @@ async def main(experiment_config):
     this_hop_data = None
 
     # initialize controller
+    print('Begin!')
     t_s = t0_s = time.perf_counter()
     controller.initialize(t0_s)
-
+    
     while (t_s-t0_s) < experiment_config['duration']:
         try:
             t_s = time.perf_counter()
@@ -134,6 +139,7 @@ async def main(experiment_config):
         except BaseException as e:
             print('failed to send set_position command, check the motor limits')
             print(str(e))
+            await robot.motor.controller.set_stop()
             break
 
         if motor_state is not None:

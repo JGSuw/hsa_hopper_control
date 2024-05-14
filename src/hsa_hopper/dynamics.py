@@ -32,7 +32,7 @@ class DynamicsParameters:
 
 def evaluate(position_rad: float, 
              velocity_rad: float, 
-             input: float, 
+             u: float, 
              params: DynamicsParameters):
     
     '''
@@ -42,7 +42,7 @@ def evaluate(position_rad: float,
         Parameters:
             position_rad (float): motor angle in radians relative to the calibration
             velocity_rad (float): motor velocity in radians
-            input (float): motor torque in N/m
+            u (float): motor torque in N/m
             params (DynamicsParameters): contains all the model information
 
         Returns:
@@ -54,11 +54,11 @@ def evaluate(position_rad: float,
     dy, dl = df[0], df[1]
     d2y = d2f[0]
     inertia = (params.J+params.m*dy**2)
-    coriolis = params.m*d2y*velocity_rad**2
+    coriolis = params.m*(dy*velocity_rad)*(d2y*velocity_rad)
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
     if params.hsa_potential is not None:
         potential += dl*params.hsa_potential.dV(np.array([l,params.psi]))[0]
-    acceleration_rad = (input-potential-coriolis-rayleigh)/inertia
+    acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
 

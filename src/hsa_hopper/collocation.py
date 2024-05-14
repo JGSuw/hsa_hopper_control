@@ -275,13 +275,13 @@ class HopBVP:
             a1,b1 = tk[i+1], tk[i+2]
             t = tk[i+1]
             # position
-            data[4*i] = (interp_covector(t,a0,b0,Nx)@c0)[0] - (interp_covector(t,a1,b1,Nx)@c1)[0]
+            data[3*i] = (interp_covector(t,a0,b0,Nx)@c0)[0] - (interp_covector(t,a1,b1,Nx)@c1)[0]
             # velocity
-            data[4*i+1] = (interp_covector(t,a0,b0,Nx,ord=1)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=1)@c1)[0]
+            data[3*i+1] = (interp_covector(t,a0,b0,Nx,ord=1)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=1)@c1)[0]
             # acceleration
             #data[4*i+2] = (interp_covector(t,a0,b0,Nx,ord=2)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=2)@c1)[0]
             # control
-            data[3*i+3] = (interp_covector(t,a0,b0,Nu)@d0)[0] - (interp_covector(t,a1,b1,Nu)@d1)[0]
+            data[3*i+2] = (interp_covector(t,a0,b0,Nu)@d0)[0] - (interp_covector(t,a1,b1,Nu)@d1)[0]
         return data
 
     def dynamic_constraints(self, z):
@@ -301,20 +301,23 @@ class HopBVP:
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
         tc = self.collo_params.tc
-        data = np.zeros(Ns*(Nx-1))
+        data = np.zeros(Ns*(Nx))
         for i in range(Ns):
             c = z[Nx*i:Nx*(i+1)]
             d = z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
             a,b = tc[i,0],tc[i,-1]
-            I0 = np.vstack([interp_covector(_t,a,b,Nx,ord=0) for _t in tc[i,:-1]])
-            I1 = np.vstack([interp_covector(_t,a,b,Nx,ord=1) for _t in tc[i,:-1]])
-            I2 = np.vstack([interp_covector(_t,a,b,Nx,ord=2) for _t in tc[i,:-1]])
-            x = I0@c
-            xdot = I1@c
-            xddot = I2@c
-            u = I0[:,:Nu]@d
-            f = np.array([dynamics.evaluate(x, xdot, u, self.dynamic_params)])
-            data[(Nx-1)*i:(Nx-1)*(i+1)] = xddot - f
+            I0 = np.vstack([interp_covector(_t,a,b,Nx,ord=0) for _t in tc[i,:]])
+            I1 = np.vstack([interp_covector(_t,a,b,Nx,ord=1) for _t in tc[i,:]])
+            I2 = np.vstack([interp_covector(_t,a,b,Nx,ord=2) for _t in tc[i,:]])
+            x = (I0@c)
+            xdot = (I1@c)
+            xddot = (I2@c)
+            u = (I0[:,:Nu]@d)
+            f = np.array([
+                dynamics.evaluate(x[i], xdot[i], u[i], self.dynamic_params)
+                for i, _t in enumerate(tc[i,:])
+                ])
+            data[(Nx)*i:(Nx)*(i+1)] = xddot - f
         return data
 
     def inequality_constraints(self, z):
@@ -336,7 +339,7 @@ class HopBVP:
         x0 = self.dynamic_params.x0
         lb = self.lb
         ub = self.ub
-        data = np.zeros(4*Ns*Nx)
+        data = np.zeros(Ns*(4*Nx))
         for i in range(Ns):
             for j in range(Nx):
                 c = z[Nx*i:Nx*(i+1)]
@@ -344,11 +347,11 @@ class HopBVP:
                 t,a,b = tc[i,j], tc[i,0], tc[i,-1]
                 I = interp_covector(t,a,b,Nx)
                 theta = (I@c)[0]
-                data[4*Nx*i+j] = theta - lb[0]
-                data[4*Nx*i+j+1] = ub[0] - theta
+                data[4*(Nx*i+j)] = theta - lb[0]
+                data[4*(Nx*i+j)+1] = ub[0] - theta
                 u = (I[:,:Nu]@d)[0]
-                data[4*Nx*i+2] = u + Kx*(x0-theta) - lb[1]
-                data[4*Nx*i+3] = ub[1] - u - Kx*(x0-theta)
+                data[4*(Nx*i+j)+2] = u + Kx*(x0-theta) - lb[1]
+                data[4*(Nx*i+j)+3] = ub[1] - u - Kx*(x0-theta)
             return data
     
     def cost(self, z):
@@ -360,7 +363,7 @@ class HopBVP:
         x0 = self.dynamic_params.x0
         _grad = np.zeros(z.shape)
         _cost = 0
-        scale = 1/(tk[-1]-tk[0])
+        scale = 1
         for i in range(Ns):
             # unpacking z into u and x parts
             c = z[Nx*i:Nx*(i+1)]
