@@ -1,23 +1,36 @@
 hardware: resources/hardware.yaml
-duration: 20.
-substrate: kneepad
+duration: 16.
+notes: None
 data_folder: data/no_hsa_foam
 controller:
-  y_gains: 
-  - [420., 2.]
-  - [0., 0.]
-  - [420., 2.]
-  - [420., 2.]
-  y_torques: [-5., 0., 15., 0.]
-  y_offsets: [.18, 0.18, 0.18, 0.18]
-  y_guards:
-  - [1., -.13]
-  - [-1., 0.]
-  - [-1., .18]
-  - [1., -.15]
-  energy_setpoint: .5
-  energy_gain: 25.
-  oscillator_mass: 1.
-  oscillator_K: 400.
-  oscillator_L: 0.18
+  kd:
+  - 0.0
+  - 0.2
+  - 0.0223
+  kp:
+  - 1.0
+  - 4.39
+  - 4.35
   servo_pos: 1500
+  u_interp:
+  - mat:
+    - - -1.1489692380472172
+      - -0.3338505591956693
+      - -1.4916792557639873
+    tk:
+    - 0.0
+    - 0.125
+  - null
+  - mat:
+    - - -0.3094954717497011
+      - -2.998512869583639
+      - 0.9332205142777366
+      - 2.736488286911297
+    tk:
+    - 0.0
+    - 0.25
+  x0:
+  - -0.61
+  - -0.64
+  - -0.61
+  x_td: -0.61

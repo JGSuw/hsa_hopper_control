@@ -1,11 +1,25 @@
-servo_min_pulse: 1100
-servo_max_pulse: 1900
-motor_min_deg: -35
-motor_max_deg: 5
-N_setpoints: 7
-jiggle_torque: .15
-jiggle_frequencies: [2.25,3.]
-jiggle_amplitude: 5
-jiggle_time: 3.
+servo_pulse:
+  - 1300
+  - 1400
+  - 1500
+  - 1600
+  - 1700
+motor_min_deg: 
+  - -45.
+  - -45.
+  - -45.
+  - -45.
+  - -45.
+motor_max_deg: 
+  - 5.
+  - 5.
+  - 5.
+  - 5.
+  - 6.
+jiggle_frequencies: 
+  - 2.
+  - 3.
+jiggle_time: 6.
 hardware: resources/hardware.yaml
 data_folder: data/hsa_identification
+note: spiked closed hsa

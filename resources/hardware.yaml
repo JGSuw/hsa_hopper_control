@@ -1,7 +1,9 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: -60.
+  calib_pos_deg: 60
+  Kt: .546 # at output
+  R: .095
 
 pdb:
   bus: 2
@@ -14,9 +16,9 @@ servo:
 
 kinematics:
   a: .07
-  b: .1524
+  b: .15
   c: .3
-  d: 0.
+  d: -0.005
 
 limits:
   motor_min_angle_deg: -50.
@@ -32,5 +34,5 @@ ati_sensor:
   Mx_range: 60
   My_range: 60
   Mz_range: 60
-  rdt_output_rate: 3500
+  rdt_output_rate: 875
   socket_timeout: .01
