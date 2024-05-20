@@ -17,8 +17,10 @@ async def main():
     while (time.perf_counter_ns() - t0) / 1e9 < 1.:
         result = await robot.motor.get_state()
         if result is not None:
-            print(f'position: {result.position}, velocity: {result.velocity}, torque: {result.torque}')
-            x, xdot = robot.convert_motor_posvel(result)
+            print(f'position: {result.position}, torque: {result.torque}')
+            # print(f'current: {(result.q_current, result.d_current)}')
+            # print(f'voltage: {(result.q_voltage, result.d_voltage)}')
+            x = robot.convert_motor_pos(result)
             f = forward_kinematics(robot.kinematics, x)
             print(f'body position: {f[0]}, HSA length: {f[1]}')
 
