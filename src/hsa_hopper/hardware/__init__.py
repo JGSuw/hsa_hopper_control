@@ -47,10 +47,9 @@ class Robot:
             self.hardware_config["kinematics"]["d"]
         )
 
-    def convert_motor_posvel(self, motor_state):
+    def convert_motor_pos(self, motor_state):
         pos = motor_state.position*_REV_TO_RAD - self.calib_pos_rad
-        vel = motor_state.velocity*_REV_TO_RAD
-        return pos,vel
+        return pos
     
     async def set_position_deg(self, motor_pos_deg, **kwargs):
         return await self.motor.set_position(position = (motor_pos_deg+self.calib_pos_deg)/_REV_TO_DEG, **kwargs)

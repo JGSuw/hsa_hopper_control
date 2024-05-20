@@ -55,6 +55,15 @@ def quad_int_tensor(a,b,N):
             I[i,j] = (b-a)/(i+j+1)
     return I
 
+def diff_tensor(a,b,N):
+    """
+    Returns a (N,N) matrix that can differentiate an N-1 degree polynomial.
+    """
+    L = np.zeros((N,N))
+    for i in range(N-1):
+        L[i,i+1] = i+1
+    return 2/(b-a)*L
+
 class CollocationParameters:
     def __init__(self, Ns, Nx, Nu, a, b):
         """
@@ -115,7 +124,7 @@ class PiecewiseInterpolation:
             raise ValueError('tk must be ndarray with length mat.shape[0]+1')
         self.tk = tk
 
-    def evaluate(self, t):
+    def evaluate(self, t, ord=0):
         """
         Evaluates the interpolation at time t.
 
@@ -129,7 +138,7 @@ class PiecewiseInterpolation:
             idx = next(i-1 for i in range(1,self.M+1) if t <= self.tk[i])
         except StopIteration:
             idx = self.M-1
-        T = interp_covector(t,self.tk[idx],self.tk[idx+1],self.N)
+        T = interp_covector(t,self.tk[idx],self.tk[idx+1],self.N,ord=ord)
         return (T[0,:]@self.mat[idx,:])
 
     def attribute_dict(self):
@@ -354,7 +363,7 @@ class HopBVP:
                 data[4*(Nx*i+j)+3] = ub[1] - u - Kx*(x0-theta)
             return data
     
-    def cost(self, z):
+    def cost(self, z, Kt = .546, R = .094):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
@@ -363,7 +372,6 @@ class HopBVP:
         x0 = self.dynamic_params.x0
         _grad = np.zeros(z.shape)
         _cost = 0
-        scale = 1
         for i in range(Ns):
             # unpacking z into u and x parts
             c = z[Nx*i:Nx*(i+1)]
@@ -372,39 +380,148 @@ class HopBVP:
             # quadratic integration tensor
             I = quad_int_tensor(tk[i],tk[i+1],Nx)
 
+            # cost function is the integral of the following:
+            # tau * dxdt + (R/Kt**2)*tau**2
+            # tau = u + Kx*(x0-x)
+            L = diff_tensor(tk[i],tk[i+1],Nx)
+            _cost += (d@I[:Nu,:]+Kx*(x0*I[0,:]-c@I))@(L@c)
+
+            # grad wrt to u
+            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += I[:Nu,:]@(L@c)
+
+            # grad wrt to x
+            _grad[Nx*i:Nx*(i+1)] += (d@I[:Nu,:]+Kx*x0*I[0,:])@L
+            _grad[Nx*i:Nx*(i+1)] -= Kx*(I[:Nx,:]@(L@c) + c@I[:Nx,:]@L)
+
             # tau**2 = (u+Kx*(x0-x))**2
             # expanding...
             # u**2 + Kx**2 * (x0**2 -2*x0*x + x**2) + 2*Kx*u*(x0-x)
 
             # u**2 term
-            _cost += d@(I[:Nu,:Nu]@d)
+            thermal_scale = (R/Kt**2)
+            _cost += d@(I[:Nu,:Nu]@d)*thermal_scale
+
             # grad wrt to u
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*I[:Nu,:Nu]@d
+            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*I[:Nu,:Nu]@d*thermal_scale
 
             # (Kx*x0)**2 term, no grad
-            _cost += (Kx*x0)*I[0,0]*(Kx*x0)
+            _cost += (Kx*x0)*I[0,0]*(Kx*x0)*thermal_scale
 
             # -2*Kx**2 * (x0*x) term
-            _cost -= 2*(Kx*x0)*(I[0,:]@(Kx*c))
+            _cost -= 2*(Kx*x0)*(I[0,:]@(Kx*c))*thermal_scale
+
             # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] -= 2*(Kx*x0)*(I[0,:]*Kx)
+            _grad[Nx*i:Nx*(i+1)] -= 2*(Kx*x0)*(I[0,:]*Kx)*thermal_scale
 
             # (Kx*x)**2 term
-            _cost += (Kx*c)@(I@(Kx*c))
+            _cost += (Kx*c)@(I@(Kx*c))*thermal_scale
+
             # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] += 2*Kx*I@(Kx*c)
+            _grad[Nx*i:Nx*(i+1)] += 2*Kx*I@(Kx*c)*thermal_scale
 
             # 2*Kx*u*(x0-x) term
-            _cost += 2*Kx*(d@(I[:Nu,0]*x0-I[:Nu,:]@c))
+            _cost += 2*Kx*(d@(I[:Nu,0]*x0-I[:Nu,:]@c))*thermal_scale
+
             # grad wrt to u
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*Kx*(I[:Nu,0]*x0-I[:Nu,:]@c)
+            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*Kx*(I[:Nu,0]*x0-I[:Nu,:]@c)*thermal_scale
+
             # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] -= 2*Kx*(d@I[:Nu,:])
+            _grad[Nx*i:Nx*(i+1)] -= 2*Kx*(d@I[:Nu,:])*thermal_scale
 
-        return _cost*scale, _grad*scale
+            # that gives the tau
+        return _cost, _grad
 
-    def optimize(self, initial_guess, options={}):
-        self.result = minimize(self.cost, initial_guess, method='SLSQP', jac=True, 
+    def cost_noregen(self, 
+                     z: np.ndarray, 
+                     a: float, 
+                     b: float, 
+                     dt: float, 
+                     Kt = .546, R = .094, alpha=10):
+
+
+        """
+        Note to self: this objective function currently only works where self.collo_params.Ns == 1
+        """
+        Nx =  self.collo_params.Nx
+        Nu = self.collo_params.Nu
+        tk = self.collo_params.tk
+        Kx =  self.dynamic_params.Kx
+        x0 = self.dynamic_params.x0
+
+        # unpack optimization variables into interp coefficients for x and u
+        c = z[:Nx]
+        d = z[Nx:]
+
+        # compute and stack interpolation covectors, with row index corresponding to 
+        # time, and column index corresponding to monomial terms
+        tvec = np.arange(a,b,dt)
+        A = np.vstack([interp_covector(t,a,b,Nx) for t in tvec])
+        D = diff_tensor(a,b,Nx)
+        A_diff = A@D
+
+        # compute state and control
+        x = A@c
+        xdot = A_diff@c
+        u = A[:,Nx:]@d
+        torque = u + Kx*(x0-x)
+        I = torque/Kt
+
+        # compute losses for integration,
+        # includes thermal power and positive mechanical power
+        thermal_power = R*I**2
+        mech_power = torque*xdot
+
+        # positive mechanical power approximated via smooth max
+        mech_power_exp = np.exp(alpha*mech_power)
+        pos_mech_power = (mech_power*mech_power_exp)/(1+mech_power_exp)
+    
+        # integrate losses and initialize memory for gradient calculation
+        _cost = np.trapz(thermal_power+pos_mech_power,x=tvec)
+        _grad = np.zeros(z.shape)
+
+        # gradient calculation will be tricky
+        # first need a linear operator to represent the trapezoidal integration
+        trapz = dt*np.ones(tvec.shape[0])
+        trapz[0] = trapz[-1] = dt/2 # end points have half weight in trapezoid integral
+
+        # gradient of torque/current wrt to interpolation coefficients
+        dtau_dx = -Kx*A     # (M,Nx) array
+        dI_dx = dtau_dx / Kt
+        dtau_du = A[:,Nx:]  # (M,Nu) array
+        dI_du = dtau_du / Kt
+
+        # most of the following multiplications are broadcast along the time
+        # axis - comments have been included to clarify some of these steps.
+
+        # calculating gradient of thermal power
+        dI2_dx = 2*dI_dx.T*I # (Nx,M)*(M,) -> (Nx,M)
+        dI2_du = 2*dI_du.T*I # (Nu,M)*(M,) -> (Nu,M)
+
+        # the following two operations reduce over the time axis
+        _grad[:Nx] += R*(dI2_dx@trapz) # (Nx,M)@(M,) -> (Nx,)
+        _grad[Nx:] += R*(dI2_du@trapz) # (Nu,M)@(M,) -> (Nu,)
+        
+        # calculating gradient of mechanical power
+        dM_dx = dtau_dx.T * xdot + (A_diff.T) * torque
+        dM_du = dtau_du.T * xdot # (Nu,M)*(M,) -> (Nu,M)
+
+        # now the tricky part - differentiating through the smoothmax
+        dsm_dM = mech_power_exp * (1 + alpha*mech_power + mech_power_exp) / (1+mech_power_exp)**2
+        dsm_dx = dM_dx.T * dsm_dM # (Nx,M)*(M,) -> (Nx,M)
+        dsm_du = dM_du.T * dsm_dM # (Nu,M)*(M,) -> (Nu,M)
+
+        # the following two operations reduce over the time axis
+        _grad[:Nx] += dsm_dx @ trapz   # (Nx,M)@(M,) -> (Nx,)
+        _grad[Nx:] += dsm_du @ trapz   # (Nu,M)@(M,) -> (Nu,)
+
+        return _cost, _grad
+
+    def optimize(self, initial_guess, options={}, regeration=True):
+        if regeneration:
+            cost = self.cost
+        else:
+            cost = self.cost_noregen
+        self.result = minimize(cost, initial_guess, method='SLSQP', jac=True, 
                 constraints = [
                 {'type' : 'eq', 'fun': self.boundary_conditions},
                 {'type' : 'eq', 'fun': self.continuity_constraints},

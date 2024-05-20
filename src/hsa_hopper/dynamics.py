@@ -52,13 +52,14 @@ def evaluate(position_rad: float,
     f,df,d2f = forward_kinematics(params.kinematics, position_rad, jacobian=True, hessian=True)
     y, l = f[0], f[1]
     dy, dl = df[0], df[1]
+    ldot = dl*velocity_rad
     d2y = d2f[0]
     inertia = (params.J+params.m*dy**2)
     coriolis = params.m*(dy*velocity_rad)*(d2y*velocity_rad)
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
     if params.hsa_potential is not None:
-        potential += dl*params.hsa_potential.dV(np.array([l,params.psi]))[0]
+        potential += dl*params.hsa_potential.dV(l, params.psi, ldot)
     acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
 
