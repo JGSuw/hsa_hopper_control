@@ -22,6 +22,10 @@ class TrajectoryData():
         self.l = deque()
         self.mode = deque()
         self.u_ff = deque()
+        # self.q_current = deque()
+        # self.d_current = deque()
+        # self.voltage = deque()
+        self.torque = deque()
         self.t_s = deque()
         
     def append(self,
@@ -31,6 +35,10 @@ class TrajectoryData():
         l,
         mode,
         u_ff,
+        # q_current,
+        # d_current,
+        # voltage,
+        torque,
         t_s
     ):
         self.x_deg.append(x_deg)
@@ -39,6 +47,10 @@ class TrajectoryData():
         self.l.append(l) 
         self.mode.append(mode)
         self.u_ff.append(u_ff)
+        # self.q_current.append(q_current)
+        # self.d_current.append(d_current)
+        # self.voltage.append(voltage)
+        self.torque.append(torque)
         self.t_s.append(t_s)
 
     def to_dataframe(self):
@@ -55,13 +67,23 @@ async def main(experiment_config):
     # record initial energy from PDB
     power_state = None
     while power_state is None:
+        motor_state = await robot.set_position_rad(
+            math.nan,
+            kp_scale = 0,
+            kd_scale = 0
+        )
         power_state = await robot.pdb.get_power_state()
     initial_energy = power_state.energy * 3600 # convert watt-hours to joules
 
     # measure energy consumed in 1-second to calculate quiescent power
     print('measuring quiescent power')
     t = t0_s = time.perf_counter()
-    while (t - t0_s) < 2.:
+    while (t - t0_s) < 3.:
+        motor_state = await robot.set_position_rad(
+            math.nan,
+            kp_scale = 0,
+            kd_scale = 0
+        )
         power_state = await robot.pdb.get_power_state()
         if power_state is not None:
             t = time.perf_counter()
@@ -145,11 +167,11 @@ async def main(experiment_config):
         if motor_state is not None:
             # update time, compute forward kinematics
             t_s = time.perf_counter()
-            x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
+            x_rad = robot.convert_motor_pos(motor_state)
             f, J = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
 
             # update the controller
-            output = controller.update(x_rad, t_s)
+            controller.update(x_rad, t_s)
             this_mode = controller.mode
 
             # partition data for recording a new epoch
@@ -172,6 +194,10 @@ async def main(experiment_config):
                     f[1],
                     controller.mode,
                     u_ff,
+                    # motor_state.q_current,
+                    # motor_state.d_current,
+                    # motor_state.voltage,
+                    motor_state.torque,
                     t_s
                 )
 

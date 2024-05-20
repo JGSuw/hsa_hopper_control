@@ -24,7 +24,7 @@ async def main(experiment_config):
     motor_state = None
     while motor_state is None:
         motor_state = await robot.set_position_rev(0., kp_scale = 0., kd_scale = 0., query=True)
-        x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
+        x_rad = robot.convert_motor_pos(motor_state)
 
     freqs = np.array(experiment_config['jiggle_frequencies'])
     T = experiment_config['jiggle_time']
@@ -53,26 +53,30 @@ async def main(experiment_config):
         a,b = motor_min_deg[i], motor_max_deg[i]
         x0 = (b+a)/2
         amplitude = (b-a)/(2*len(freqs))
-        y = lambda t: x0 + amplitude*sum(np.sin(2*np.pi*f*(t-t0)) for f in freqs)
-        while (t-t0) < T:
-            motor_setpoint = y(t)
-            motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.)
-            t = time.perf_counter()
-            if motor_state is not None:
-                x_rad, xdot_rad = robot.convert_motor_posvel(motor_state)
-                f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
-                motor_angle.append(x_rad)
-                motor_torque.append(motor_state.torque)
-                hsa_len.append(f[1])
-                dl_dtheta.append(df[1])
-                times.append(t)
-        await robot.motor.controller.set_stop()
-        data['motor_angle'].append(motor_angle)
-        data['motor_torque'].append(motor_torque)
-        data['hsa_len'].append(hsa_len)
-        data['dldtheta'].append(dl_dtheta)
-        data['times'].append(times)
-        data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
+        y = lambda t: x0 - amplitude*sum(np.cos(2*np.pi*f*(t-t0)) for f in freqs)
+        try:
+            while (t-t0) < T:
+                motor_setpoint = y(t)
+                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.)
+                t = time.perf_counter()
+                if motor_state is not None:
+                    x_rad = robot.convert_motor_pos(motor_state)
+                    f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
+                    motor_angle.append(x_rad)
+                    motor_torque.append(motor_state.torque)
+                    hsa_len.append(f[1])
+                    dl_dtheta.append(df[1])
+                    times.append(t)
+            await robot.motor.controller.set_stop()
+            data['motor_angle'].append(motor_angle)
+            data['motor_torque'].append(motor_torque)
+            data['hsa_len'].append(hsa_len)
+            data['dldtheta'].append(dl_dtheta)
+            data['times'].append(times)
+            data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
+        except BaseException:
+            print('exception caught!')
+            robot.motor.controller.set_stop()
 
     # save data to file
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
