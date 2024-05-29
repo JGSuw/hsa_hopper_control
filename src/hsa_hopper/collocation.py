@@ -433,10 +433,7 @@ class HopBVP:
 
     def cost_noregen(self, 
                      z: np.ndarray, 
-                     a: float, 
-                     b: float, 
-                     dt: float, 
-                     Kt = .546, R = .094, alpha=10):
+                     Kt = .546, R = .094, alpha=2):
 
 
         """
@@ -445,6 +442,9 @@ class HopBVP:
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
         tk = self.collo_params.tk
+        a = tk[0]
+        b = tk[-1]
+        dt = (tk[-1]-tk[0])/100
         Kx =  self.dynamic_params.Kx
         x0 = self.dynamic_params.x0
 
@@ -462,7 +462,7 @@ class HopBVP:
         # compute state and control
         x = A@c
         xdot = A_diff@c
-        u = A[:,Nx:]@d
+        u = A[:,:Nu]@d
         torque = u + Kx*(x0-x)
         I = torque/Kt
 
@@ -472,11 +472,17 @@ class HopBVP:
         mech_power = torque*xdot
 
         # positive mechanical power approximated via smooth max
-        mech_power_exp = np.exp(alpha*mech_power)
-        pos_mech_power = (mech_power*mech_power_exp)/(1+mech_power_exp)
+        # mech_power_exp = np.exp(alpha*mech_power)
+        # pos_mech_power = (mech_power*mech_power_exp)/(1+mech_power_exp)
+
+        # positive electrical power approximated via smooth max
+        electrical_power = thermal_power + mech_power
+        electrical_power_exp = np.exp(alpha*electrical_power)
+        pos_electrical_power = (electrical_power*electrical_power_exp)/(1+electrical_power_exp)
     
         # integrate losses and initialize memory for gradient calculation
-        _cost = np.trapz(thermal_power+pos_mech_power,x=tvec)
+        # _cost = np.trapz(thermal_power+pos_mech_power,x=tvec)
+        _cost = np.trapz(pos_electrical_power,x=tvec)
         _grad = np.zeros(z.shape)
 
         # gradient calculation will be tricky
@@ -487,7 +493,7 @@ class HopBVP:
         # gradient of torque/current wrt to interpolation coefficients
         dtau_dx = -Kx*A     # (M,Nx) array
         dI_dx = dtau_dx / Kt
-        dtau_du = A[:,Nx:]  # (M,Nu) array
+        dtau_du = A[:,:Nu]  # (M,Nu) array
         dI_du = dtau_du / Kt
 
         # most of the following multiplications are broadcast along the time
@@ -502,13 +508,19 @@ class HopBVP:
         _grad[Nx:] += R*(dI2_du@trapz) # (Nu,M)@(M,) -> (Nu,)
         
         # calculating gradient of mechanical power
-        dM_dx = dtau_dx.T * xdot + (A_diff.T) * torque
-        dM_du = dtau_du.T * xdot # (Nu,M)*(M,) -> (Nu,M)
+        # dM_dx = dtau_dx.T * xdot + (A_diff.T) * torque
+        # dM_du = dtau_du.T * xdot # (Nu,M)*(M,) -> (Nu,M)
+        dp_dx = R*dI2_dx + dtau_dx.T*xdot + (A_diff.T)*torque
+        dp_du = R*dI2_du + dtau_du.T*xdot # (Nu,M) + ((Nu,M) * (M,)) -> (Nu,M)
 
         # now the tricky part - differentiating through the smoothmax
-        dsm_dM = mech_power_exp * (1 + alpha*mech_power + mech_power_exp) / (1+mech_power_exp)**2
-        dsm_dx = dM_dx.T * dsm_dM # (Nx,M)*(M,) -> (Nx,M)
-        dsm_du = dM_du.T * dsm_dM # (Nu,M)*(M,) -> (Nu,M)
+        # dsm_dM = mech_power_exp * (1 + alpha*mech_power + mech_power_exp) / (1+mech_power_exp)**2
+        # dsm_dx = dM_dx * dsm_dM # (Nx,M)*(M,) -> (Nx,M)
+        # dsm_du = dM_du * dsm_dM # (Nu,M)*(M,) -> (Nu,M)
+        dsm_dp = electrical_power_exp * (1+alpha*electrical_power + electrical_power_exp)
+        dsm_dp /= (1+electrical_power_exp)**2
+        dsm_dx = dp_dx * dsm_dp # (Nx,M)*(M,) -> (Nx,M)
+        dsm_du = dp_du * dsm_dp # (Nu,M)*(M,) -> (Nu,M)
 
         # the following two operations reduce over the time axis
         _grad[:Nx] += dsm_dx @ trapz   # (Nx,M)@(M,) -> (Nx,)
@@ -516,7 +528,7 @@ class HopBVP:
 
         return _cost, _grad
 
-    def optimize(self, initial_guess, options={}, regeration=True):
+    def optimize(self, initial_guess, options={}, regeneration=True):
         if regeneration:
             cost = self.cost
         else:

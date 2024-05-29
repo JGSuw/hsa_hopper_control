@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from scipy.optimize import root_scalar
 
 class KinematicParameters:
     def __init__(self, 
@@ -41,3 +42,39 @@ def forward_kinematics(p: KinematicParameters, theta: float, jacobian = False, h
     d2phi_d2theta = (d2phi_d2x*dx_dtheta)*dx_dtheta + dphi_dx*d2x_d2theta
     d2y_d2theta = p.a*s_theta - p.b*(s_phi*dphi_dtheta)*dphi_dtheta + p.b*c_phi*d2phi_d2theta
     return np.array([y, p.c - y - p.d]), np.array([dy_dtheta, -dy_dtheta]), np.array([d2y_d2theta, -d2y_d2theta])
+
+
+def make_lut(p: KinematicParameters, theta: np.ndarray):
+    keys = np.sort(theta)
+    lut = {}
+    for key in keys:
+        lut[key] = forward_kinematics(p,key)[0]
+    return lut
+
+def ik_bracket(lut: dict, y: float):
+    keys = lut.keys()
+    values = lut.values()
+    errors = np.array([abs(value - y)] for value in values)
+    nearest_soln_idx = np.argmin(errors)
+    if values[nearest_soln_idx] > y:
+        a = keys[nearest_soln_idx-1]
+        b = keys[nearest_soln_idx]
+    else:
+        a = keys[nearest_soln_idx]
+        b = keys[nearest_soln_idx+1]
+    if a < b :
+        lb = a
+        ub = b
+    else:
+        lb = b
+        ub = a
+    return (lb, ub)
+
+def inverse_kinematics(p: KinematicParameters, y: float, lb: float, ub: float):
+    g = lambda y, f, df: (y-f[0],-df[0])
+    h = lambda x: g(y,forward_kinematics(p,x))
+    ik_result = root_scalar(h, 
+                            method = 'newton',
+                            fprime = True,
+                            x0 = (lb + ub)/2)
+    return ik_result

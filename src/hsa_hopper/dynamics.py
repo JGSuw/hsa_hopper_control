@@ -55,6 +55,10 @@ def evaluate(position_rad: float,
     ldot = dl*velocity_rad
     d2y = d2f[0]
     inertia = (params.J+params.m*dy**2)
+    # T = 1/2 m * (dy * xdot)**2
+    # dT/dxdot = m * dy * dy * xdot
+    # d/dt(dT/dxdot) = m*dy*dy*xddot + 2*m*dy*xdot*d2y*xdot
+    # d/dx T = m*dy*xdot*d2y*xdot
     coriolis = params.m*(dy*velocity_rad)*(d2y*velocity_rad)
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
