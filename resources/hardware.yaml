@@ -1,7 +1,7 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 60
+  calib_pos_deg: 0.
   Kt: .546 # at output
   R: .095
 
