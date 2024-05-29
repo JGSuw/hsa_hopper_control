@@ -57,7 +57,7 @@ async def main(experiment_config):
         try:
             while (t-t0) < T:
                 motor_setpoint = y(t)
-                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.)
+                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.5)
                 t = time.perf_counter()
                 if motor_state is not None:
                     x_rad = robot.convert_motor_pos(motor_state)
