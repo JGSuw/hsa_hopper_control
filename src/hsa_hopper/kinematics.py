@@ -52,11 +52,11 @@ def make_lut(p: KinematicParameters, theta: np.ndarray):
     return lut
 
 def ik_bracket(lut: dict, y: float):
-    keys = lut.keys()
+    keys = list(lut.keys())
     values = lut.values()
     errors = np.array([abs(value - y)] for value in values)
     nearest_soln_idx = np.argmin(errors)
-    if values[nearest_soln_idx] > y:
+    if lut[keys[nearest_soln_idx]] > y:
         a = keys[nearest_soln_idx-1]
         b = keys[nearest_soln_idx]
     else:
@@ -71,8 +71,8 @@ def ik_bracket(lut: dict, y: float):
     return (lb, ub)
 
 def inverse_kinematics(p: KinematicParameters, y: float, lb: float, ub: float):
-    g = lambda y, f, df: (y-f[0],-df[0])
-    h = lambda x: g(y,forward_kinematics(p,x))
+    g = lambda y, f: (y-f[0][0],-f[1][0])
+    h = lambda x: g(y,forward_kinematics(p,x,jacobian=True))
     ik_result = root_scalar(h, 
                             method = 'newton',
                             fprime = True,
