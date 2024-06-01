@@ -12,7 +12,8 @@ def pi3hat_tranport_factory(hardware_config):
     transport = moteus_pi3hat.Pi3HatRouter(
         servo_bus_map = {
             hardware_config["motor"]["bus"] : [hardware_config["motor"]["id"]],
-            hardware_config["pdb"]["bus"] : [hardware_config["pdb"]["id"]]
+            hardware_config["pdb0"]["bus"] : [hardware_config["pdb0"]["id"]],
+            hardware_config["pdb1"]["bus"] : [hardware_config["pdb1"]["id"]]
         }
     )
     return transport
@@ -36,7 +37,8 @@ class Robot:
 
         self.transport = pi3hat_tranport_factory(self.hardware_config)
         self.motor = Motor(self.min_pos_rev, self.max_pos_rev, self.hardware_config["motor"]["id"], self.transport)
-        self.pdb = PowerDistributionBoard(self.hardware_config["pdb"]["id"], self.transport)
+        self.pdb0 = PowerDistributionBoard(self.hardware_config["pdb0"]["id"], self.transport)
+        self.pdb1 = PowerDistributionBoard(self.hardware_config["pdb1"]["id"], self.transport)
         self.servo = Servo(self.hardware_config["servo"]["port"],
                             self.hardware_config["servo"]["baudrate"],
                             self.hardware_config["servo"]["gear_ratio"])

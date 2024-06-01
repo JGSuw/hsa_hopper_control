@@ -1,0 +1,10 @@
+torque:
+  - 3.
+duration: 20.
+servo_pos: 800
+fet_temp: 25
+ambient_temp: 22. # only two significant figures
+quiescent_power: 7.
+note: extra thick HSA
+data_folder: data/brake_test
+hardware: resources/hardware.yaml
