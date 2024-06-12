@@ -76,7 +76,7 @@ async def main(experiment_config):
             data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
         except BaseException:
             print('exception caught!')
-            robot.motor.controller.set_stop()
+            await robot.motor.controller.set_stop()
 
     # save data to file
     prefix = os.path.join(root_folder, experiment_config['data_folder'])

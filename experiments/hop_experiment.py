@@ -22,9 +22,8 @@ class TrajectoryData():
         self.l = deque()
         self.mode = deque()
         self.u_ff = deque()
-        # self.q_current = deque()
-        # self.d_current = deque()
-        # self.voltage = deque()
+        self.q_current = deque()
+        self.d_current = deque()
         self.torque = deque()
         self.t_s = deque()
         
@@ -35,9 +34,8 @@ class TrajectoryData():
         l,
         mode,
         u_ff,
-        # q_current,
-        # d_current,
-        # voltage,
+        q_current,
+        d_current,
         torque,
         t_s
     ):
@@ -47,9 +45,8 @@ class TrajectoryData():
         self.l.append(l) 
         self.mode.append(mode)
         self.u_ff.append(u_ff)
-        # self.q_current.append(q_current)
-        # self.d_current.append(d_current)
-        # self.voltage.append(voltage)
+        self.q_current.append(q_current)
+        self.d_current.append(d_current)
         self.torque.append(torque)
         self.t_s.append(t_s)
 
@@ -65,29 +62,23 @@ async def main(experiment_config):
     robot = Robot(hardware_config_path)
 
     # record initial energy from PDB
-    power_state = None
-    while power_state is None:
-        motor_state = await robot.set_position_rad(
-            math.nan,
-            kp_scale = 0,
-            kd_scale = 0
-        )
-        power_state = await robot.pdb.get_power_state()
-    initial_energy = power_state.energy * 3600 # convert watt-hours to joules
+    ps0 = await robot.pdb0.get_power_state()
+    ps1 = await robot.pdb1.get_power_state()
+    initial_energy = (ps1.energy + ps0.energy) * 3600 # convert watt-hours to joules
 
-    # measure energy consumed in 1-second to calculate quiescent power
+    # measure energy consumed in 3-seconds to calculate quiescent power
     print('measuring quiescent power')
     t = t0_s = time.perf_counter()
-    while (t - t0_s) < 3.:
+    while (t - t0_s) < 5.:
         motor_state = await robot.set_position_rad(
             math.nan,
             kp_scale = 0,
             kd_scale = 0
         )
-        power_state = await robot.pdb.get_power_state()
-        if power_state is not None:
-            t = time.perf_counter()
-    quiescent_power = ((power_state.energy*3600) - initial_energy)/(t-t0_s)
+        ps0 = await robot.pdb0.get_power_state()
+        ps1 = await robot.pdb1.get_power_state()
+        t = time.perf_counter()
+    quiescent_power = ((ps0.energy + ps1.energy)*3600 - initial_energy)/(t-t0_s)
     print(f'quiescent power: {quiescent_power}')
     
     # construct the force sensor process
@@ -176,13 +167,12 @@ async def main(experiment_config):
 
             # partition data for recording a new epoch
             if (this_mode == HopController._STANCE) and (last_mode != HopController._STANCE):
-                power_state = None
-                while power_state is None:
-                    power_state = await robot.pdb.get_power_state()
+                ps0 = await robot.pdb0.get_power_state()
+                ps1 = await robot.pdb1.get_power_state()
                 ati_sensor.start_stream()
                 this_hop_data =  {
                         'traj' : TrajectoryData(),
-                        'initial_energy' : power_state.energy*3600
+                        'initial_energy' : (ps0.energy+ps1.energy)*3600
                         }
                 hops.append(this_hop_data)
             last_mode = this_mode
@@ -194,9 +184,8 @@ async def main(experiment_config):
                     f[1],
                     controller.mode,
                     u_ff,
-                    # motor_state.q_current,
-                    # motor_state.d_current,
-                    # motor_state.voltage,
+                    motor_state.q_current,
+                    motor_state.d_current,
                     motor_state.torque,
                     t_s
                 )
@@ -220,7 +209,7 @@ async def main(experiment_config):
     os.makedirs(experiment_folder)
     for i in range(len(hops)-1):
         path = os.path.join(experiment_folder, f'hop_{i}.csv')
-        df = hops[i]['traj'].to_dataframe().to_csv(path)
+        hops[i]['traj'].to_dataframe().to_csv(path)
 
     path = os.path.join(experiment_folder, 'energy.csv')
     pd.DataFrame({'hop_energy' : hop_energy}).to_csv(path)

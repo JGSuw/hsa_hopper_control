@@ -14,7 +14,7 @@ async def main(note):
     data_folder = os.path.join(root_folder, "data")
     config_path = os.path.join(root_folder, "resources/hardware.yaml")
     robot = hsa_hopper.hardware.Robot(config_path) 
-    duration = 60. # measure power for 10 seconds
+    duration = 30. # measure power for 10 seconds
     E00 = (await robot.pdb0.get_power_state()).energy
     E01 = (await robot.pdb1.get_power_state()).energy
     t0 = time.perf_counter()
