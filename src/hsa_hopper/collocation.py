@@ -363,7 +363,7 @@ class HopBVP:
                 data[4*(Nx*i+j)+3] = ub[1] - u - Kx*(x0-theta)
             return data
     
-    def cost(self, z, Kt = .546, R = .094):
+    def cost(self, z, Kv = .546, Kfudge=0.78, R = .094):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
@@ -398,7 +398,7 @@ class HopBVP:
             # u**2 + Kx**2 * (x0**2 -2*x0*x + x**2) + 2*Kx*u*(x0-x)
 
             # u**2 term
-            thermal_scale = (R/Kt**2)
+            thermal_scale = (R/(Kv*Kfudge)**2)
             _cost += d@(I[:Nu,:Nu]@d)*thermal_scale
 
             # grad wrt to u
@@ -433,7 +433,8 @@ class HopBVP:
 
     def cost_noregen(self, 
                      z: np.ndarray, 
-                     Kt = .546, R = .094, alpha=2):
+                     Kfudge = 0.78,
+                     Kv = .546, R = .094, alpha=1.):
 
 
         """
@@ -464,7 +465,7 @@ class HopBVP:
         xdot = A_diff@c
         u = A[:,:Nu]@d
         torque = u + Kx*(x0-x)
-        I = torque/Kt
+        I = torque/(Kv*Kfudge)
 
         # compute losses for integration,
         # includes thermal power and positive mechanical power
@@ -482,19 +483,19 @@ class HopBVP:
     
         # integrate losses and initialize memory for gradient calculation
         # _cost = np.trapz(thermal_power+pos_mech_power,x=tvec)
-        _cost = np.trapz(pos_electrical_power,x=tvec)
-        _grad = np.zeros(z.shape)
-
         # gradient calculation will be tricky
         # first need a linear operator to represent the trapezoidal integration
         trapz = dt*np.ones(tvec.shape[0])
         trapz[0] = trapz[-1] = dt/2 # end points have half weight in trapezoid integral
 
+        _cost = np.dot(trapz, pos_electrical_power)
+        _grad = np.zeros(z.shape)
+
         # gradient of torque/current wrt to interpolation coefficients
         dtau_dx = -Kx*A     # (M,Nx) array
-        dI_dx = dtau_dx / Kt
+        dI_dx = dtau_dx / (Kv*Kfudge)
         dtau_du = A[:,:Nu]  # (M,Nu) array
-        dI_du = dtau_du / Kt
+        dI_du = dtau_du / (Kv*Kfudge)
 
         # most of the following multiplications are broadcast along the time
         # axis - comments have been included to clarify some of these steps.

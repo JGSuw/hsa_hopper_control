@@ -42,7 +42,7 @@ def evaluate(position_rad: float,
         Parameters:
             position_rad (float): motor angle in radians relative to the calibration
             velocity_rad (float): motor velocity in radians
-            u (float): motor torque in N/m
+            u (float): motor torque in Nm
             params (DynamicsParameters): contains all the model information
 
         Returns:
