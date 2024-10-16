@@ -15,9 +15,9 @@ class PDBRegister(enum.IntEnum):
 
 class PowerState:
     def __init__(self, state):
-        self.voltage = state.values[PDBRegister.OUTPUT_VOLTAGE]
-        self.current = state.values[PDBRegister.OUTPUT_CURRENT]
-        self.energy = state.values[PDBRegister.ENERGY] # energy is reported in Watts * Hours
+        # self.voltage = state.values[PDBRegister.OUTPUT_VOLTAGE]
+        # self.current = state.values[PDBRegister.OUTPUT_CURRENT]
+        self.energy = state.values[PDBRegister.ENERGY] * 1e-6
 
 class PowerDistributionBoard(moteus.Controller):
     def __init__(self, id = 32, transport = None):
@@ -25,9 +25,9 @@ class PowerDistributionBoard(moteus.Controller):
     
     async def query(self):
         to_query_fields = {
-            PDBRegister.OUTPUT_VOLTAGE: moteus.F32,
-            PDBRegister.OUTPUT_CURRENT: moteus.F32,
-            PDBRegister.ENERGY : moteus.F32
+            # PDBRegister.OUTPUT_VOLTAGE: moteus.F32,
+            # PDBRegister.OUTPUT_CURRENT: moteus.F32,
+            PDBRegister.ENERGY : moteus.INT32
         }
         return await moteus.Controller.custom_query(self, to_query_fields)
 
@@ -38,7 +38,7 @@ class PowerDistributionBoard(moteus.Controller):
         else:
             return None
 
-    async def print_info():
+    async def print_info(self):
         power_state = await self.get_power_state()
         print(f'Voltage: {power_state.voltage}')
         print(f'Current: {power_state.current}')

@@ -1,0 +1,7 @@
+data_folder: data/standing_test
+note: None
+hardware: resources/hardware.yaml
+duration: 10.
+y_values: [.19,.18,.17,.16,.15,.14,.13]
+kp: 10.
+kd: .2

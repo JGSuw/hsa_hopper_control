@@ -1,0 +1,8 @@
+data_folder: data/drop_test
+drop_height_m: 0.3302
+hardware: resources/hardware.yaml
+kd: 0.0
+kp: 0.0
+note: test with thick closed HSA
+servo_pos: 800
+x0_deg: 31.0

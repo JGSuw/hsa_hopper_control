@@ -2,6 +2,9 @@ import numpy as np
 import yaml
 import os
 
+def logistic_function(x, a):
+    return 1/(1+np.exp(-a*x))
+
 class HSAPotential:
     def __init__(self, 
                  w_c: np.ndarray,   # conservative kernel weights i.e. estimates of potential at configuration
@@ -15,7 +18,7 @@ class HSAPotential:
         self.y = y
         self.l = l
         self.s = s
-        self.S = S = np.cov(y.T)
+        self.S = S = np.cov(y)
         self.Sinv = Sinv = np.linalg.inv(S)
 
         # distance function, and its gradient, and hessian

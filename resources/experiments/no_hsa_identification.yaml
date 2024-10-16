@@ -1,0 +1,11 @@
+frequency: 2.5
+jiggle_time: 4
+motor_min_deg: 15.
+motor_max_deg: -44.
+servo_min_pulse: 1100
+servo_max_pulse: 1900
+setpoints: 8
+kp_rad: 60.
+kd_rad: 2.
+hardware: resources/hardware.yaml
+data_folder: data/no_hsa_identification

@@ -1,0 +1,5 @@
+data_folder: data/motor_identification
+hardware: resources/hardware.yaml
+frequencies: [1., 2.5, 3.]
+amplitude: .25
+duration: 10.
