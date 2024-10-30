@@ -12,6 +12,7 @@ dependencies = [
     "numpy",
     "scipy",
     "pyyaml",
+    "jupyterlab==4.2.5"
 ]
 
 [project.optional-dependencies]
