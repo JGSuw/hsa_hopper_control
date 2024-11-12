@@ -1,5 +1,5 @@
 from .kinematics import KinematicParameters, forward_kinematics
-from .hsa_model import HSAPotential
+from .hsa_model import HSAModel
 import numpy as np
 g = 9.81
 _FLIGHT_MODE = 1
@@ -13,12 +13,12 @@ class DynamicsParameters:
             Kx: float,
             x0: float,
             kinematics: KinematicParameters,
-            hsa_potential = None,
+            hsa_model = None,
             psi = None
     ):
         self.m, self.J, self.bx, self.by, self.Kx, self.x0, self.psi = m,J,bx,by,Kx,x0,psi
         self.kinematics = kinematics
-        self.hsa_potential = hsa_potential
+        self.hsa_model = hsa_model 
     
     def attribute_dict(self):
         attributes = {}
@@ -62,10 +62,10 @@ def evaluate(position_rad: float,
     coriolis = params.m*(dy*velocity_rad)*(d2y*velocity_rad)
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
-    if params.hsa_potential is not None:
+    if params.hsa_model is not None:
         z = np.array([l,params.psi])
         zdot = np.array([ldot, 0])
-        potential += dl*(params.hsa_potential.dV(z)+params.hsa_potential.dR(z,zdot))
+        potential += dl*(params.hsa_model.dV(z)+params.hsa_model.dR(z,zdot))
     acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
 
