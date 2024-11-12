@@ -24,7 +24,7 @@ class DynamicsParameters:
         attributes = {}
         for key in self.__dict__:
             value = self.__dict__[key]
-            if type(value) == HSAPotential or type(value) == KinematicParameters:
+            if type(value) == HSAModel or type(value) == KinematicParameters:
                 attributes[key] = value.attribute_dict()
             else:
                 attributes[key] = value
@@ -63,7 +63,9 @@ def evaluate(position_rad: float,
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
     if params.hsa_potential is not None:
-        potential += dl*params.hsa_potential.dV(l, params.psi, ldot)
+        z = np.array([l,params.psi])
+        zdot = np.array([ldot, 0])
+        potential += dl*(params.hsa_potential.dV(z)+params.hsa_potential.dR(z,zdot))
     acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
 
