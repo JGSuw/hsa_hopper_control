@@ -3,21 +3,14 @@ import yaml
 import os
 
 def quadratic_f(x,a):
-    return a*x**2
+    return .5*(a*x)**2
 
 def quadratic_df(x,a):
-    return 2*a*x
-
-def quasi_quadratic_f(x,a):
-    return np.log((1+np.exp(a*x))*(1+np.exp(-a*x))/4)
-
-def quasi_quadratic_df(x,a):
-    return a*(np.exp(a*x)-1)/(np.exp(a*x)+1)
+    return x*a**2
 
 class HSAPotential:
     LINEAR = 0
     GENERALIZED = 1
-    NONLINEAR = 2
     def __init__(self, 
                  K: float,          # linear spring rate
                  F0: float,         # spring preload
@@ -27,7 +20,7 @@ class HSAPotential:
                  w_d: np.ndarray,   # dissipative kernel weights i.e. estimates of potential at configuration
                  y_d: np.ndarray,   # basis function locations for dissipative kernels
                  a: float,          # smoothness parameter for dissipation potential
-                 s: float,          # length-scale parameter used by kernels
+                 s: float,
                  kind=LINEAR):         
         self.K = K
         self.F0 = F0
@@ -43,15 +36,17 @@ class HSAPotential:
             self.a = a
             self.s = s
             self.Sc = Sc = np.cov(y_c)
+            self.sc = np.linalg.det(Sc)
             self.Scinv = Scinv = np.linalg.inv(Sc)
             self.Sd = Sd = np.cov(y_d)
+            self.sd = np.linalg.det(Sd)
             self.Sdinv = Sdinv = np.linalg.inv(Sd)
 
             # distance function, and its gradient, and hessian
-            self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))/s**2
-            self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i])/s**2)
-            self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))/s**2
-            self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i])/s**2)
+            self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))/self.s**2
+            self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i]))/self.s**2
+            self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))/self.s**2
+            self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i]))/self.s**2
 
 
             # conservative kernel, its gradient, and hessian
@@ -62,10 +57,6 @@ class HSAPotential:
             if kind == HSAPotential.GENERALIZED:
                 self.f = lambda x: quadratic_f(x, self.a)
                 self.df = lambda x: quadratic_df(x, self.a)
-            elif kind == HSAPotential.NONLINEAR:
-                self.f = lambda x: quasi_quadratic_f(x, self.a)
-                self.df = lambda x: quasi_quadratic_df(x, self.a)
-
             # disspation kernel and its gradient
             self.kd = lambda z, zdot, i: self.f(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))
             self.dkd = lambda z, zdot, i: self.df(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))*self.drhod(z,i)
@@ -92,8 +83,8 @@ class HSAPotential:
                 'y_c': self.y_c.tolist(), 
                 'w_d': self.w_d.tolist(), 
                 'y_d': self.y_d.tolist(), 
-                'a': self.a, 
-                's': self.s, 
+                'a': self.a,
+                's': self.s,
                 'kind': self.kind}
         else: 
             attributes = {
@@ -105,7 +96,7 @@ class HSAPotential:
                 'w_d': None, 
                 'y_d': None, 
                 'a': None, 
-                's': None, 
+                's': None,
                 'kind': self.kind}
 
         return attributes
@@ -126,7 +117,7 @@ class HSAPotential:
             attributes['w_d'], 
             attributes['y_d'], 
             attributes['a'], 
-            attributes['s'],
+            attributes['s'], 
             attributes['kind'])
 
 def load_potential(path:os.path):
