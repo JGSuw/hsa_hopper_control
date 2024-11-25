@@ -8,20 +8,43 @@ def quadratic_f(x,a):
 def quadratic_df(x,a):
     return x*a**2
 
+def quasi_quadratic_f(x,a):
+    return np.log((1+np.exp(a*x))*(1+np.exp(-a*x))/(4*a))
+
+def quasi_quadratic_df(x,a):
+    return (np.exp(a*x)-1)/(1+np.exp(a*x))
+
+class LinearModel:
+    def __init__(self, k: float, f: float, b: float):
+        self.k = k
+        self.f = f
+        self.b = b
+
+    def dV(self, z: np.ndarray):
+        return self.f + self.k*z[0]
+    
+    def dR(self, z: np.ndarray, zdot: np.ndarray):
+        return self.b*zdot[0]
+
+    def num_params(self):
+        return 3
+
+    def attribute_dict(self):
+        return {'k' : self.k, 'f': self.f, 'b': self.b}
+
 class HSAModel:
+    QUADRATIC = 0
+    QUASI_QUADRATIC = 1
     def __init__(self, 
-                 K: float,          # linear spring rate
-                 F0: float,         # spring preload
-                 b: float,          # linear dissipation term
                  w_c: np.ndarray,   # conservative kernel weights i.e. estimates of potential at configuration
                  y_c: np.ndarray,   # basis function locations for conservative kernels
                  w_d: np.ndarray,   # dissipative kernel weights i.e. estimates of potential at configuration
                  y_d: np.ndarray,   # basis function locations for dissipative kernels
                  a: float,          # smoothness parameter for dissipation potential
-                 s: float):
-        self.K = K
-        self.F0 = F0
-        self.b = b
+                 s: float,
+                 linear=None,       # optional linear model
+                 kind=QUADRATIC):
+        self.linear = linear
         assert(w_c.shape[0] == y_c.shape[1])
         self.w_c = w_c
         self.y_c = y_c
@@ -38,41 +61,56 @@ class HSAModel:
         self.Sdinv = Sdinv = np.linalg.inv(Sd)
 
         # distance function, and its gradient, and hessian
-        self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))/self.s**2
-        self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i]))/self.s**2
-        self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))/self.s**2
-        self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i]))/self.s**2
+        self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))
+        self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i]))
+        self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))
+        self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i]))
 
 
         # conservative kernel, its gradient, and hessian
-        self.kc = lambda z, i: np.exp(-self.rhoc(z,i))
-        self.dkc = lambda z, i: self.kc(z, i)*(-self.drhoc(z,i))
-
-        # activation function and derivative, used in disspation kernel
-        self.f = lambda x: quadratic_f(x, self.a)
-        self.df = lambda x: quadratic_df(x, self.a)
+        self.kc = lambda z, i: np.exp(-self.s*self.rhoc(z,i))
+        self.dkc = lambda z, i: self.kc(z, i)*(-self.drhoc(z,i)*self.s)
 
         # disspation kernel and its gradient
-        self.kd = lambda z, zdot, i: self.f(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))
-        self.dkd = lambda z, zdot, i: self.df(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))*self.drhod(z,i)
+        self.kind = kind
+        if kind == HSAModel.QUADRATIC:
+            self.f = quadratic_f
+            self.df = quadratic_df
+        elif kind == HSAModel.QUASI_QUADRATIC:
+            self.f = quasi_quadratic_f
+            self.df = quasi_quadratic_df
+
+        self.kd = lambda z, zdot, i: self.f(np.dot(zdot,self.Sdinv@zdot),self.a)*np.exp(-self.rhod(z,i)*self.s)
+        self.dkd = lambda z, zdot, i: self.df(np.dot(zdot,self.Sdinv@zdot),self.a)*np.exp(-self.rhod(z,i)*self.s)*(2*self.Sdinv@zdot)
+        # self.kd = lambda z, zdot, i: self.f(np.dot(self.drhod(z,i),zdot),self.sd)*np.exp(-self.rhod(z,i)*self.s)
+        # self.dkd = lambda z, zdot, i: self.df(np.dot(self.drhod(z,i),zdot),self.sd)*np.exp(-self.rhod(z,i)*self.s)*(self.drhod(z,i))
 
     def V(self, z: np.ndarray):
-        return sum(self.w_c[i]*self.kc(z,i) for i in range(self.w_c.shape[0])) + .5*self.K*z[0]**2
+        return sum(self.w_c[i]*self.kc(z,i) for i in range(self.w_c.shape[0]))
 
     def R(self, z: np.ndarray, zdot: np.ndarray):
-        return sum(self.w_d[i]*self.kd(z,zdot,i) for i in range(self.w_d.shape[0])) + .5*self.b*zdot[0]**2
+        return sum(self.w_d[i]*self.kd(z,zdot,i) for i in range(self.w_d.shape[0]))
     
     def dV(self, z: np.ndarray):
-        return sum(self.w_c[i]*self.dkc(z,i)[0] for i in range(self.w_c.shape[0])) + self.K*z[0] + self.F0
+        if self.linear is None:
+            return sum(self.w_c[i]*self.dkc(z,i)[0] for i in range(self.w_c.shape[0]))
+        else:
+            return sum(self.w_c[i]*self.dkc(z,i)[0] for i in range(self.w_c.shape[0])) + self.linear.dV(z)
+
 
     def dR(self, z: np.ndarray, zdot: np.ndarray):
-        return sum(self.w_d[i]*self.dkd(z,zdot,i)[0] for i in range(self.w_d.shape[0])) + self.b*zdot[0]
+        if self.linear is None:
+            return sum(self.w_d[i]*self.dkd(z,zdot,i)[0] for i in range(self.w_d.shape[0]))
+        else:
+            return sum(self.w_d[i]*self.dkd(z,zdot,i)[0] for i in range(self.w_d.shape[0])) + self.linear.dR(z,zdot)
 
     def attribute_dict(self):
+        if self.linear is None:
+            linear_attrs = None
+        else:
+            linear_attrs = self.linear.attribute_dict()
         attributes = {
-            'K' : float(self.K),
-            'F0' : float(self.F0),
-            'b': float(self.b), 
+            'linear' : linear_attrs,
             'w_c': self.w_c, 
             'y_c': self.y_c, 
             'w_d': self.w_d, 
@@ -83,19 +121,24 @@ class HSAModel:
         return attributes
     
     def num_params(self):
-            return 3 + self.w_c.shape[0]+self.w_d.shape[0]
+        if self.linear is None:
+            return self.w_c.shape[0]+self.w_d.shape[0]
+        else:
+            return self.linear.num_params() + self.w_c.shape[0] + self.w_d.shape[0]
     
     def make_from_dict(attributes):
+        if attributes['linear'] is None:
+            linear = None
+        else:
+            linear = LinearModel(**attributes['linear'])
         return HSAModel(
-            attributes['K'],
-            attributes['F0'],
-            attributes['b'], 
             attributes['w_c'], 
             attributes['y_c'], 
             attributes['w_d'], 
             attributes['y_d'], 
             attributes['a'], 
             attributes['s'], 
+            linear=linear
         )
 
 def load_model(path: str):

@@ -18,7 +18,7 @@ class DynamicsParameters:
     ):
         self.m, self.J, self.bx, self.by, self.Kx, self.x0, self.psi = m,J,bx,by,Kx,x0,psi
         self.kinematics = kinematics
-        self.hsa_model = hsa_model 
+        self.hsa_model = hsa_model
     
     def attribute_dict(self):
         attributes = {}
@@ -53,13 +53,16 @@ def evaluate(position_rad: float,
     y, l = f[0], f[1]
     dy, dl = df[0], df[1]
     ldot = dl*velocity_rad
+    ydot = dy*velocity_rad
     d2y = d2f[0]
-    inertia = (params.J+params.m*dy**2)
+    # inertia = (params.J+params.m*dy**2)
+    inertia = params.J
     # T = 1/2 m * (dy * xdot)**2
     # dT/dxdot = m * dy * dy * xdot
     # d/dt(dT/dxdot) = m*dy*dy*xddot + 2*m*dy*xdot*d2y*xdot
     # d/dx T = m*dy*xdot*d2y*xdot
-    coriolis = params.m*(dy*velocity_rad)*(d2y*velocity_rad)
+    # coriolis = params.m*(ydot)*(d2y*velocity_rad)
+    coriolis = 0
     rayleigh = (params.bx+params.by*dy**2)*velocity_rad
     potential = params.Kx*(position_rad-params.x0) + params.m*g*dy
     if params.hsa_model is not None:
