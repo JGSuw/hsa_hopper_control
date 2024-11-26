@@ -1,13 +1,17 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 0.
+  calib_pos_deg: 57. #59
   Kt: .546 # at output
   R: .095
 
-pdb:
-  bus: 2
+pdb0:
+  bus: 3
   id: 32
+
+pdb1:
+  bus: 4
+  id: 33
 
 servo:
   port: /dev/ttyACM0
@@ -18,7 +22,7 @@ kinematics:
   a: .07
   b: .15
   c: .3
-  d: -0.005
+  d: -0.00
 
 limits:
   motor_min_angle_deg: -50.
@@ -34,5 +38,6 @@ ati_sensor:
   Mx_range: 60
   My_range: 60
   Mz_range: 60
-  rdt_output_rate: 875
+  rdt_output_rate: 1750
+  lowpass_cutoff_hz: 838
   socket_timeout: .01
