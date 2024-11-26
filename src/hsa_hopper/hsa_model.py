@@ -30,7 +30,11 @@ class LinearModel:
         return 3
 
     def attribute_dict(self):
-        return {'k' : self.k, 'f': self.f, 'b': self.b}
+        return {'k' : float(self.k), 'f': float(self.f), 'b': float(self.b)}
+    
+    @staticmethod
+    def make_from_dict(attrs):
+        return LinearModel(attrs['k'], attrs['f'], attrs['b'])
 
 class HSAModel:
     QUADRATIC = 0
