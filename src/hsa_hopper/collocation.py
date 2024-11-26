@@ -529,11 +529,11 @@ class HopBVP:
 
         return _cost, _grad
 
-    def optimize(self, initial_guess, options={}, regeneration=True):
+    def optimize(self, initial_guess, options={}, regeneration=True, alpha=1.):
         if regeneration:
             cost = self.cost
         else:
-            cost = self.cost_noregen
+            cost = lambda z: self.cost_noregen(z,alpha=alpha)
         self.result = minimize(cost, initial_guess, method='SLSQP', jac=True, 
                 constraints = [
                 {'type' : 'eq', 'fun': self.boundary_conditions},
