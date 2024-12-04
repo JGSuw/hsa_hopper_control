@@ -1,6 +1,5 @@
 from hsa_hopper.hardware import *
 from hsa_hopper.kinematics import KinematicParameters, forward_kinematics
-from hsa_hopper.collocation import PiecewiseInterpolation
 from hsa_hopper.controller import HopController
 from hsa_hopper.constants import _REV_TO_DEG, _RAD_TO_DEG
 from hsa_hopper.force_sensor import ForceSensorProcess
@@ -16,37 +15,19 @@ from collections import deque
 
 class TrajectoryData():
     def __init__(self):
-        self.x_deg = deque()
-        self.x_moteus_deg = deque()
-        self.y = deque()
-        self.l = deque()
+        self.x_rad = deque()
         self.mode = deque()
-        self.u_ff = deque()
-        self.q_current = deque()
-        self.d_current = deque()
         self.torque = deque()
         self.t_s = deque()
         
     def append(self,
-        x_deg,
-        x_moteus_deg,           
-        y,
-        l,
+        x_rad,
         mode,
-        u_ff,
-        q_current,
-        d_current,
         torque,
         t_s
     ):
-        self.x_deg.append(x_deg)
-        self.x_moteus_deg.append(x_moteus_deg)
-        self.y.append(y)
-        self.l.append(l) 
+        self.x_rad.append(x_rad)
         self.mode.append(mode)
-        self.u_ff.append(u_ff)
-        self.q_current.append(q_current)
-        self.d_current.append(d_current)
         self.torque.append(torque)
         self.t_s.append(t_s)
 
@@ -92,21 +73,15 @@ async def main(experiment_config):
     #### build the HopController ####
     controller_config = experiment_config['controller']
 
-    # controller gains (in units radians)
-    _kp = np.array(controller_config['kp'])
-    _kd = np.array(controller_config['kd'])
-    _x0 = np.array(controller_config['x0'])
-
-    # feed-forward torque interpolations
-    _u = [  # modes 0,2 have interpolations, mode 1 (flight) has none
-            PiecewiseInterpolation(np.array(d['mat']),np.array(d['tk']))
-            if d is not None else None
-            for d in controller_config['u_interp']
-    ]
-    # 'touchdown' motor angle in radians, relative to calibration
-    _xtd = controller_config['x_td']
-    _xlo = controller_config['x_lo']
-    controller = HopController(_kp, _kd, _x0, _u, _xtd, _xlo)
+    # controller gains (in units radians for motor angle)
+    controller = HopController(
+        controller_config['kp'], 
+        controller_config['kd'], 
+        controller_config['x0'], 
+        controller_config['u_ff'], 
+        controller_config['xtd'], 
+        controller_config['xlo'],
+        controller_config['window'])
 
     # hsa setpoint
     robot.servo.write_setpoint(int(controller_config['servo_pos']))
@@ -117,29 +92,36 @@ async def main(experiment_config):
 
     # apply gains from mode 0 (startup) and initial setpoint
     print('Initializing...')
+    controller.mode = HopController._STARTUP
+    kp, kd, x0_rad, u_ff = controller.output()
     while (time.perf_counter()-t0_s) < 2.:
-        kp_scale = controller.kp[HopController._STARTUP] / kp_moteus
-        kd_scale = controller.kd[HopController._STARTUP] / kd_moteus
-        x0 = controller.x0_rad[HopController._STARTUP]
+        kp_scale = kp / kp_moteus
+        kd_scale = kd / kd_moteus
+        # don't send feed-forward torque while initializing
         motor_state = await robot.set_position_rad(
-                x0,
+                x0_rad,
                 kp_scale = kp_scale,
                 kd_scale = kd_scale, 
+                feedforward_torque = 0,
                 query=True)
-
+        t_s = time.perf_counter()
+        x_rad = robot.convert_motor_pos(motor_state)
+        controller.update(x_rad, t_s)
+        controller.mode = HopController._STARTUP
+        kp, kd, x0_rad = controller.output()
+        
     # arrays for holding data from each hop
     hops = []
     this_hop_data = None
 
-    # initialize controller
+    # start the experiment
     print('Begin!')
     t_s = t0_s = time.perf_counter()
-    controller.initialize(t0_s)
-    
+    last_mode = HopController._STARTUP 
     while (t_s-t0_s) < experiment_config['duration']:
         try:
             t_s = time.perf_counter()
-            kp, kd, x0_rad, u_ff = controller.output(t_s)
+            kp, kd, x0_rad, u_ff = controller.output()
             kp_scale = kp / kp_moteus
             kd_scale = kd / kd_moteus
             motor_state = await robot.set_position_rad(
@@ -159,14 +141,13 @@ async def main(experiment_config):
             # update time, compute forward kinematics
             t_s = time.perf_counter()
             x_rad = robot.convert_motor_pos(motor_state)
-            f, J = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
 
             # update the controller
             controller.update(x_rad, t_s)
             this_mode = controller.mode
 
             # partition data for recording a new epoch
-            if (this_mode == HopController._STANCE) and (last_mode != HopController._STANCE):
+            if (this_mode == HopController._STANCE0) and (last_mode != HopController._STANCE0):
                 ps0 = await robot.pdb0.get_power_state()
                 ps1 = await robot.pdb1.get_power_state()
                 ati_sensor.start_stream()
@@ -178,14 +159,8 @@ async def main(experiment_config):
             last_mode = this_mode
             if this_hop_data is not None:
                 this_hop_data['traj'].append(
-                    x_rad * _RAD_TO_DEG,
-                    motor_state.position * _REV_TO_DEG,           
-                    f[0],
-                    f[1],
+                    x_rad,
                     controller.mode,
-                    u_ff,
-                    motor_state.q_current,
-                    motor_state.d_current,
                     motor_state.torque,
                     t_s
                 )
