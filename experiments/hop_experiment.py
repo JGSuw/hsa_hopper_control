@@ -193,6 +193,7 @@ async def main(experiment_config):
     ati_sensor.write_data(os.path.join(experiment_folder, 'ati_measurements.csv'))
     
     # save experiment config for reproduction
+    experiment_config['datestring'] = datestring
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
         yaml.dump(experiment_config, f)
     
