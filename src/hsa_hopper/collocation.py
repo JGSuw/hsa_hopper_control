@@ -33,6 +33,12 @@ def interp_covector(t, a, b, N, ord=0):
                 T[n] = (b-a)/(n+1)
     return T
 
+def interp_tensor(t: np.ndarray, a: float, b: float, N: int, ord=0):
+    T = np.zeros((*t.shape, N))
+    for idx, _t in np.ndenumerate(t):
+        T[*idx, :] = interp_covector(_t,a,b,N,ord=ord)
+    return T
+
 def quad_int_tensor(a,b,N):
     """
     Helper function to compute the integral from t=a to t=b of T.T@T
