@@ -1,7 +1,8 @@
 **/*.pickle
 __pycache__
 **/*.egg-info
-data/hsa_identification/**
+data
+etc
 Scripts
 pyvenv.cfg
 share
