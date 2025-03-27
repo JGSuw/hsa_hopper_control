@@ -79,9 +79,8 @@ async def main(experiment_config):
         controller_config['kd'], 
         controller_config['x0'], 
         controller_config['u_ff'], 
-        controller_config['xtd'], 
-        controller_config['xlo'],
-        controller_config['window'])
+        float(controller_config['sigma']),
+        int(controller_config['window']))
 
     # hsa setpoint
     robot.servo.write_setpoint(int(controller_config['servo_pos']))
@@ -108,7 +107,7 @@ async def main(experiment_config):
         x_rad = robot.convert_motor_pos(motor_state)
         controller.update(x_rad, t_s)
         controller.mode = HopController._STARTUP
-        kp, kd, x0_rad = controller.output()
+        kp, kd, x0_rad, u_ff = controller.output()
         
     # arrays for holding data from each hop
     hops = []
@@ -117,7 +116,7 @@ async def main(experiment_config):
     # start the experiment
     print('Begin!')
     t_s = t0_s = time.perf_counter()
-    last_mode = HopController._STARTUP 
+    last_mode = controller.mode = HopController._STANCE1
     while (t_s-t0_s) < experiment_config['duration']:
         try:
             t_s = time.perf_counter()
@@ -180,6 +179,7 @@ async def main(experiment_config):
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
     now = time.time()
     datestring = str(datetime.date.fromtimestamp(now))
+    experiment_config['datestring'] = datestring
     experiment_folder = os.path.join(prefix, datestring+f'_{int(now)}')
     os.makedirs(experiment_folder)
     for i in range(len(hops)-1):
