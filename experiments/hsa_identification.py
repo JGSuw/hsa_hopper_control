@@ -41,6 +41,7 @@ async def main(experiment_config):
         x_rad = robot.convert_motor_pos(motor_state)
 
     freqs = np.array(experiment_config['jiggle_frequencies'])
+    # amps = np.array(experiment_config['jiggle_amplitude'])
     T = experiment_config['jiggle_time']
     servo_pos = np.array(experiment_config['servo_pulse'])
     motor_min_deg = np.array(experiment_config['motor_min_deg'])
@@ -59,10 +60,12 @@ async def main(experiment_config):
         x0 = (b+a)/2
         amplitude = (b-a)/(2*len(freqs))
         y = lambda t: x0 - amplitude*sum(np.cos(2*np.pi*f*(t-t0)) for f in freqs)
+        # y = lambda t: sum(amps[i]*np.cos(2*np.pi*freqs[i]*(t-t0)) for i in range(len(freqs)))
         try:
             while (t-t0) < T:
                 motor_setpoint = y(t)
-                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = 1.5)
+                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = .5)
+                # motor_state = await robot.set_position_rad(motor_setpoint, query=True, kp_scale = 2., kd_scale = .4)
                 t = time.perf_counter()
                 if motor_state is not None:
                     x_rad = robot.convert_motor_pos(motor_state)
@@ -70,8 +73,9 @@ async def main(experiment_config):
                     data.append(x_rad, motor_state.torque, t)
             await robot.motor.controller.set_stop()
             all_data[robot.servo.pulse_to_angle(p)] = data
-        except BaseException:
+        except BaseException as e:
             print('exception caught!')
+            print(str(e))
             await robot.motor.controller.set_stop()
 
     # save data to file
@@ -84,7 +88,7 @@ async def main(experiment_config):
     path = os.path.join(experiment_folder, 'data.pickle')
     for hsa_angle, data in all_data.items():
         path = os.path.join(experiment_folder, f'{int(hsa_angle)}_deg.csv')
-        data.to_csv(path)
+        data.to_dataframe().to_csv(path)
 
     # save experiment config for reproduction
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
