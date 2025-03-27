@@ -12,6 +12,20 @@ import pandas as pd
 import pickle
 from collections import deque
 
+class IdentificationData():
+    def __init__(self):
+        self.x_rad = deque()
+        self.torque = deque()
+        self.t_s = deque()
+
+    def append(self, x_rad: float, torque: float, t_s: float):
+        self.x_rad.append(x_rad)
+        self.torque.append(torque)
+        self.t_s.append(t_s)
+
+    def to_dataframe(self):
+        return pd.DataFrame({'x_rad' : self.x_rad, 'torque' : self.torque, 't_s' : self.t_s})
+
 async def main(experiment_config):
     this_folder = os.path.dirname(os.path.abspath(__file__))
     root_folder = os.path.dirname(this_folder)
@@ -32,22 +46,13 @@ async def main(experiment_config):
     motor_min_deg = np.array(experiment_config['motor_min_deg'])
     motor_max_deg = np.array(experiment_config['motor_max_deg'])
 
-    data = {'motor_angle' : [],
-            'motor_torque' : [],
-            'hsa_angle' : [],
-            'hsa_rest_len' : [],
-            'hsa_len' : [],
-            'dldtheta': [],
-            'times' : []}
+    all_data = {}
+
     for i,p in enumerate(servo_pos):
         await robot.motor.controller.set_stop()
         robot.servo.write_setpoint(int(p))
         input('')
-        motor_angle = []
-        motor_torque = []
-        hsa_len = []
-        dl_dtheta = []
-        times = []
+        data = IdentificationData()
         motor_state = None
         t = t0 = time.perf_counter()
         a,b = motor_min_deg[i], motor_max_deg[i]
@@ -62,18 +67,9 @@ async def main(experiment_config):
                 if motor_state is not None:
                     x_rad = robot.convert_motor_pos(motor_state)
                     f, df = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
-                    motor_angle.append(x_rad)
-                    motor_torque.append(motor_state.torque)
-                    hsa_len.append(f[1])
-                    dl_dtheta.append(df[1])
-                    times.append(t)
+                    data.append(x_rad, motor_state.torque, t)
             await robot.motor.controller.set_stop()
-            data['motor_angle'].append(motor_angle)
-            data['motor_torque'].append(motor_torque)
-            data['hsa_len'].append(hsa_len)
-            data['dldtheta'].append(dl_dtheta)
-            data['times'].append(times)
-            data['hsa_angle'].append(robot.servo.pulse_to_angle(p))
+            all_data[robot.servo.pulse_to_angle(p)] = data
         except BaseException:
             print('exception caught!')
             await robot.motor.controller.set_stop()
@@ -86,8 +82,9 @@ async def main(experiment_config):
     os.makedirs(experiment_folder)
 
     path = os.path.join(experiment_folder, 'data.pickle')
-    with open(path, 'wb') as file:
-        pickle.dump(data,file)
+    for hsa_angle, data in all_data.items():
+        path = os.path.join(experiment_folder, f'{int(hsa_angle)}_deg.csv')
+        data.to_csv(path)
 
     # save experiment config for reproduction
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
