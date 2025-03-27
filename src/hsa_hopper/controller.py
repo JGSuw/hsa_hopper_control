@@ -1,50 +1,52 @@
 import numpy as np
+from hsa_hopper.collocation import PiecewiseInterpolation
 
 class HopController():
     _STARTUP = 0
     _FLIGHT = 1
     _STANCE = 2
     def __init__(self,
-                 kp: np.ndarray,
-                 kd: np.ndarray,
-                 x0_rad: np.ndarray,
-                 u_interp: np.ndarray,
-                 x_td_rad: float,
-                 x_lo_rad: float,
+                 kp: list,          # Proportional gain in stance
+                 kd: list,          # Derivative gain in stance
+                 x0_rad: list,      # Angle spring equilibrium in stance
+                 u_interp: list,    # list of feed-forward torque interpolations
+                 sigma: float,      # flight/stance switching position
+                 window: int,       # window size for velocity estimation via savgol of quadratic interpolation
                  ):
-        """
-        Implements the control law for hopping, a combination of 
-        motor angle PD control with optimized feed-forward torque.
-
-            Inputs:
-                kp (np.ndarray): (3,) array of proportional gains on motor angle,
-                    one per control mode (startup, stance, flight).
-                kd (np.ndarray): (3,) array of derivative gains on motor angle,
-                    one per control mode.
-                x0 (np.ndarray): (3,) array of angle setpoints for proportional control,
-                    one per control mode.
-                u_interp (list of PiecewiseInterpolation): list of feed-forward torque
-                    interpolation functions, one per control mode.
-                x_td (float): guard angle for transitioning between modes (0->1->2->1->2 etc)
-        """
-        self.initialized = False
         self.mode = None
         self.t0_s = None
         self.kp = kp
         self.kd = kd
         self.x0_rad = x0_rad
         self.u_interp = u_interp
-        self.x_td_rad = x_td_rad
-        self.x_lo_rad = x_lo_rad
+        self.u_ff = 0
+        self.sigma = sigma
+        self.N = window//2
+        self.tdata = np.zeros(window)
+        self.xdata = np.zeros(window)
+        self.A_mat = np.zeros((window,3))
+        self.A_mat[:,0] = np.ones(window)
 
-    def initialize(self, t0_s: float):
-        """
-        Sets the mode of this controller to HopController._STARTUP, and sets the 
-        time datum to t0_s (time in seconds).
-        """
-        self.mode = HopController._STARTUP
-        self.t0_s = t0_s
-        self.initialized = True
+    def quad_fit(self):
+        dt = self.tdata-self.tdata[self.N]
+        self.A_mat[:,1] = dt
+        self.A_mat[:,2] = dt**2
+        coeffs, residuals, rank, s = np.linalg.lstsq(self.A_mat, self.xdata, rcond=-1)
+        return coeffs, dt
+
+    def pushoff_switch_condition(self):
+        coeffs, dt = self.quad_fit()
+        xdotm1 = coeffs[1] + 2*dt[self.N-1]*coeffs[2]
+        xdotp1 = coeffs[1] + 2*dt[self.N+1]*coeffs[2]
+        return xdotm1 > 0 and xdotp1 < 0
+    
+    def flight_switch_condition(self):
+        coeffs, dt = self.quad_fit()
+        return coeffs[0] <= self.sigma and coeffs[1] < 0
+    
+    def stance_switch_condition(self):
+        coeffs, dt = self.quad_fit()
+        return coeffs[0] >= self.sigma and coeffs[1] > 0
 
     def update(self, x_rad: float, t_s: float):
         """
@@ -57,56 +59,34 @@ class HopController():
             x_rad (float): motor angle relative to calibration position in radians.
             t_s (float): precise system time when x_rad was received.
         """
-        if (not self.initialized):
-            raise RuntimeError('Cannot update HopController before initialization')
-        elif self.mode == HopController._STARTUP:
-            if x_rad <= self.x_lo_rad:
+        self.tdata[0:-1] = self.tdata[1:]
+        self.tdata[-1] = t_s
+        self.xdata[0:-1] = self.xdata[1:]
+        self.xdata[-1] = x_rad
+        if self.mode == HopController._STARTUP:
+            if self.flight_switch_condition():
                 self.mode = HopController._FLIGHT
                 self.t0_s = t_s
         elif self.mode == HopController._FLIGHT:
-            if x_rad >= self.x_td_rad:
+            if self.stance_switch_condition():
                 self.mode = HopController._STANCE
                 self.t0_s = t_s
         elif self.mode == HopController._STANCE:
-            if x_rad <= self.x_lo_rad:
+            if self.flight_switch_condition():
                 self.mode = HopController._FLIGHT
                 self.t0_s = t_s
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
+        self.u_ff = self.u_interp[self.mode].evaluate(t_s-self.t0_s)
 
-    def output(self, t_s: float):
-        """
-        Returns the controller gains, setpoint, and feed-forward torque
-        corresponding to t_s - self.t0_s and the current mode.
-
-            Inputs:
-                t_s (float): precise system time for when message is expected
-                    to be received by Moteus controller.
-
-            Returns:
-                kp (float): proportional gain term
-                kd (float): derivative gain term
-                x0_rad (float): proportional control setpoint in radians,
-                    relative to the motor calibration (must be shifted and converted to revolutions!)
-                u_ff (float): feed-forward torque in N/m.
-        """
-        if not (self.initialized):
-            raise RuntimeError('Cannot execute HopController.output before initialization')
-        elif self.mode == HopController._STARTUP:
-            pass
+    def output(self):
+        if self.mode == HopController._STARTUP:
+            return self.kp[0], self.kd[0], self.x0_rad[0], self.u_ff
         elif self.mode == HopController._FLIGHT:
-            pass
-        elif self.mode == HopController._STANCE:
-            pass
+            return self.kp[1], self.kd[1], self.x0_rad[0], self.u_ff
+        elif self.mode == HopController._STANCE1:
+            return self.kp[2], self.kd[2], self.x0_rad[0], self.u_ff
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
-        kp = self.kp[self.mode]
-        kd = self.kd[self.mode]
-        x0_rad = self.x0_rad[self.mode]
-        if self.u_interp[self.mode] != None:
-            u_ff = self.u_interp[self.mode].evaluate(t_s - self.t0_s)
-        else:
-            u_ff = 0.
-        return kp, kd, x0_rad, u_ff
 
 

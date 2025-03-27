@@ -92,21 +92,14 @@ async def main(experiment_config):
     #### build the HopController ####
     controller_config = experiment_config['controller']
 
-    # controller gains (in units radians)
-    _kp = np.array(controller_config['kp'])
-    _kd = np.array(controller_config['kd'])
-    _x0 = np.array(controller_config['x0'])
-
-    # feed-forward torque interpolations
-    _u = [  # modes 0,2 have interpolations, mode 1 (flight) has none
-            PiecewiseInterpolation(np.array(d['mat']),np.array(d['tk']))
-            if d is not None else None
-            for d in controller_config['u_interp']
-    ]
-    # 'touchdown' motor angle in radians, relative to calibration
-    _xtd = controller_config['x_td']
-    _xlo = controller_config['x_lo']
-    controller = HopController(_kp, _kd, _x0, _u, _xtd, _xlo)
+    # controller gains (in units radians for motor angle)
+    controller = HopController(
+        controller_config['kp'], 
+        controller_config['kd'], 
+        controller_config['x0'], 
+        controller_config['u_ff'], 
+        float(controller_config['sigma']),
+        int(controller_config['window']))
 
     # hsa setpoint
     robot.servo.write_setpoint(int(controller_config['servo_pos']))
@@ -126,7 +119,12 @@ async def main(experiment_config):
                 kp_scale = kp_scale,
                 kd_scale = kd_scale, 
                 query=True)
-
+        t_s = time.perf_counter()
+        x_rad = robot.convert_motor_pos(motor_state)
+        controller.update(x_rad, t_s)
+        controller.mode = HopController._STARTUP
+        kp, kd, x0_rad, u_ff = controller.output()
+        
     # arrays for holding data from each hop
     hops = []
     this_hop_data = None
@@ -136,6 +134,7 @@ async def main(experiment_config):
     t_s = t0_s = time.perf_counter()
     controller.initialize(t0_s)
     
+    last_mode = controller.mode = HopController._STANCE1
     while (t_s-t0_s) < experiment_config['duration']:
         try:
             t_s = time.perf_counter()
@@ -205,6 +204,7 @@ async def main(experiment_config):
     prefix = os.path.join(root_folder, experiment_config['data_folder'])
     now = time.time()
     datestring = str(datetime.date.fromtimestamp(now))
+    experiment_config['datestring'] = datestring
     experiment_folder = os.path.join(prefix, datestring+f'_{int(now)}')
     os.makedirs(experiment_folder)
     for i in range(len(hops)-1):
