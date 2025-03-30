@@ -363,73 +363,82 @@ class HopBVP:
                 data[4*(Nx*i+j)+3] = ub[1] - u - Kx*(x0-theta)
             return data
     
-    def cost(self, z, Kv = .546, Kfudge=0.78, R = .094):
+    def cost(self, z, Kv = .546, Kfudge=0.78, R = .29):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
         tk = self.collo_params.tk
         Kx =  self.dynamic_params.Kx
         x0 = self.dynamic_params.x0
-        _grad = np.zeros(z.shape)
-        _cost = 0
+
+        grad = np.zeros((Ns,Nx+Nu))
+        x = np.reshape(z[:Ns*Nx], (Ns,Nx), order='F') 
+        x_grad = np.zeros((Ns,Nx))
+        u = np.reshape(z[Ns*Nx:], (Ns,Nu), order='F')
+        u_grad = np.zeros((Ns,Nu))
+
+        # product tensor, used to multiply two (Nx-1) degree polynomials
+        # into a 2*(Nx-1) degree polynomial
+        prod = np.zeros((2*Nx-1,Nx,Nx))
+        for (i,j) in np.ndindex((Nx,Nx)):
+            prod[i+j,i,j] = 1
+        # tensor to integrate a 2*(Nx-1) degree polynomial over the spline domains
+        I = np.vstack([interp_covector(None,tk[i],tk[i+1],ord=-1) for i in range(Ns)])
+        # bilinear form composes integration with product
+        prod_int = np.einsum('ij,jkl->ikl', I, prod)
+
+        # differentiation tensor
+        dt = np.zeros((Ns,Nx,Nx))
         for i in range(Ns):
-            # unpacking z into u and x parts
-            c = z[Nx*i:Nx*(i+1)]
-            d = z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
+            dt[i,:,:] = diff_tensor(tk[i],tk[i+1],Nx)
 
-            # quadratic integration tensor
-            I = quad_int_tensor(tk[i],tk[i+1],Nx)
+        # torque
+        tau = -Kx*x
+        tau[:, :Nu] = u
+        tau[:,0] += Kx*x0
+        # tau_du = np.zeros((Ns,Nx,Nu))
+        tau_dx = -Kx
 
-            # cost function is the integral of the following:
-            # tau * dxdt + (R/Kt**2)*tau**2
-            # tau = u + Kx*(x0-x)
-            L = diff_tensor(tk[i],tk[i+1],Nx)
-            _cost += (d@I[:Nu,:]+Kx*(x0*I[0,:]-c@I))@(L@c)
+        # velocity
+        xdot = np.einsum('ijk,ik->ij', dt, x)
 
-            # grad wrt to u
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += I[:Nu,:]@(L@c)
+        # mechanical work
+        # derivative with respect to torque
+        mech_work_dtau = np.einsum('ijk,ik->ij', prod_int, xdot)
+        mech_work = np.einsum('ij,ij->i', mech_work, tau)
 
-            # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] += (d@I[:Nu,:]+Kx*x0*I[0,:])@L
-            _grad[Nx*i:Nx*(i+1)] -= Kx*(I[:Nx,:]@(L@c) + c@I[:Nx,:]@L)
+        # derivative with respect to xdot
+        mech_work_dxdot = np.einsum('ijk,ij->ik', prod_int, tau)
 
-            # tau**2 = (u+Kx*(x0-x))**2
-            # expanding...
-            # u**2 + Kx**2 * (x0**2 -2*x0*x + x**2) + 2*Kx*u*(x0-x)
+        # accumulate derivative with respect to x
+        mech_work_dx = -Kx*mech_work_dtau
+        x_grad += mech_work_dx
+        x_grad += np.einsum('ij,ijk->ik', mech_work_dxdot, dt)
 
-            # u**2 term
-            thermal_scale = (R/(Kv*Kfudge)**2)
-            _cost += d@(I[:Nu,:Nu]@d)*thermal_scale
+        # accumulate derivative with resupect to u
+        u_grad += mech_work_dtau[:,:Nu]
 
-            # grad wrt to u
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*I[:Nu,:Nu]@d*thermal_scale
 
-            # (Kx*x0)**2 term, no grad
-            _cost += (Kx*x0)*I[0,0]*(Kx*x0)*thermal_scale
+        # thermal work
+        current = tau / (Kv*Kfudge)
+        voltage = current * R
+        therm_work_dI = np.einsum('ijk,ik->ij', prod_int, voltage)
+        therm_work = np.einsum('ij,ij->i', therm_work_dI, current)
+        therm_work_dV = np.einsum('ijk,ij->ik', prod_int, voltage)
 
-            # -2*Kx**2 * (x0*x) term
-            _cost -= 2*(Kx*x0)*(I[0,:]@(Kx*c))*thermal_scale
+        # accumulate gradients
+        current_dtau = 1/(Kv*Kfudge)
+        voltage_dtau = R*current_dtau
+        x_grad += therm_work_dI*current_dtau*tau_dx
+        x_grad += therm_work_dV*voltage_dtau*tau_dx
+        u_grad += therm_work_dI[:,:Nu]*current_dtau
+        u_grad += therm_work_dV[:,:Nu]*voltage_dtau
 
-            # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] -= 2*(Kx*x0)*(I[0,:]*Kx)*thermal_scale
+        # pack the gradient
+        grad[:,:Nx] = x_grad
+        grad[:,Nx:] = u_grad
 
-            # (Kx*x)**2 term
-            _cost += (Kx*c)@(I@(Kx*c))*thermal_scale
-
-            # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] += 2*Kx*I@(Kx*c)*thermal_scale
-
-            # 2*Kx*u*(x0-x) term
-            _cost += 2*Kx*(d@(I[:Nu,0]*x0-I[:Nu,:]@c))*thermal_scale
-
-            # grad wrt to u
-            _grad[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)] += 2*Kx*(I[:Nu,0]*x0-I[:Nu,:]@c)*thermal_scale
-
-            # grad wrt to x
-            _grad[Nx*i:Nx*(i+1)] -= 2*Kx*(d@I[:Nu,:])*thermal_scale
-
-            # that gives the tau
-        return _cost, _grad
+        return np.sum(mech_work+therm_work), np.reshape(grad, Ns*(Nx+Nu), order='F')
 
     def cost_noregen(self, 
                      z: np.ndarray, 
