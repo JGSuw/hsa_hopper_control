@@ -1,13 +1,17 @@
 motor:
   bus: 1
   id : 1
-  calib_pos_deg: 0.
+  calib_pos_deg: -18
   Kt: .546 # at output
   R: .095
 
-pdb:
-  bus: 2
+pdb0:
+  bus: 3
   id: 32
+
+pdb1:
+  bus: 4
+  id: 33
 
 servo:
   port: /dev/ttyACM0
@@ -21,8 +25,8 @@ kinematics:
   d: -0.005
 
 limits:
-  motor_min_angle_deg: -50.
-  motor_max_angle_deg: 50.
+  motor_min_angle_deg: -65.
+  motor_max_angle_deg: 60.
 
 ati_sensor:
   ip: '10.42.0.3'
