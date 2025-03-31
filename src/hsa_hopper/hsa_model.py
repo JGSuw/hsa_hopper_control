@@ -8,7 +8,7 @@ def quadratic_f(x,a):
 def quadratic_df(x,a):
     return x*a**2
 
-class HSAPotential:
+class HSAModel:
     LINEAR = 0
     GENERALIZED = 1
     def __init__(self, 
@@ -26,7 +26,7 @@ class HSAPotential:
         self.F0 = F0
         self.b = b
         self.kind = kind
-        if kind != HSAPotential.LINEAR:
+        if kind != HSAModel.LINEAR:
             assert(w_c.shape[0] == y_c.shape[1])
             self.w_c = w_c
             self.y_c = y_c
@@ -54,7 +54,7 @@ class HSAPotential:
             self.dkc = lambda z, i: self.kc(z, i)*(-self.drhoc(z,i))
 
             # activation function and derivative, used in disspation kernel
-            if kind == HSAPotential.GENERALIZED:
+            if kind == HSAModel.GENERALIZED:
                 self.f = lambda x: quadratic_f(x, self.a)
                 self.df = lambda x: quadratic_df(x, self.a)
             # disspation kernel and its gradient
@@ -74,7 +74,7 @@ class HSAPotential:
         return sum(self.w_d[i]*self.dkd(z,zdot,i)[0] for i in range(self.w_d.shape[0])) + self.b*zdot[0]
 
     def attribute_dict(self):
-        if self.kind != HSAPotential.LINEAR:
+        if self.kind != HSAModel.LINEAR:
             attributes = {
                 'K' : self.K,
                 'F0' : self.F0,
@@ -102,13 +102,13 @@ class HSAPotential:
         return attributes
     
     def num_params(self):
-        if self.kind == HSAPotential.LINEAR:
+        if self.kind == HSAModel.LINEAR:
             return 3
         else:
             return 3 + self.w_c.shape[0]+self.w_d.shape[0]
     
     def make_from_dict(attributes):
-        return HSAPotential(
+        return HSAModel(
             attributes['K'],
             attributes['F0'],
             attributes['b'], 
@@ -123,9 +123,9 @@ class HSAPotential:
 def load_potential(path:os.path):
     with open(path, 'rb') as f:
         attributes = yaml.load(f, yaml.Loader)
-    return HSAPotential.make_from_dict(attributes)
+    return HSAModel.make_from_dict(attributes)
 
-def save_potential(potential: HSAPotential, path: os.path):
+def save_potential(potential: HSAModel, path: os.path):
     attributes = potential.attribute_dict()
     with open(path, 'wb') as f:
         yaml.dump(attributes, f, yaml.Dumper)

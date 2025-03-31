@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import minimize, OptimizeResult
 import yaml
 import hsa_hopper.dynamics as dynamics
-from .dynamics import DynamicsParameters
+from .dynamics import DynamicsParameters, stance_dynamics
 
 def interp_covector(t, a, b, N, ord=0):
     """
@@ -30,7 +30,7 @@ def interp_covector(t, a, b, N, ord=0):
                 T[0,n] = (t-mid)**(n-ord) * math.factorial(n)/(math.factorial(n-ord)) * (scale ** n)
         if ord == -1: # integration case
             if n%2 == 0:
-                T[n] = (b-a)/(n+1)
+                T[0,n] = (b-a)/(n+1)
     return T
 
 def quad_int_tensor(a,b,N):
@@ -65,7 +65,7 @@ def diff_tensor(a,b,N):
     return 2/(b-a)*L
 
 class CollocationParameters:
-    def __init__(self, Ns, Nx, Nu, a, b):
+    def __init__(self, Ns, Nx, Nu, Nc, a, b):
         """
         Creates a dictionary of collocation parameters for constructing approximate
         polynomial solutions to boundary-vaue problems subject to dynamics 
@@ -79,11 +79,24 @@ class CollocationParameters:
 
             Returns: dictionary of parameters that define the solution space
         """ 
-        self.Ns, self.Nx, self.Nu, self.a, self.b = Ns, Nx, Nu, a, b
+        self.Ns, self.Nx, self.Nu, self.Nc, self.a, self.b = Ns, Nx, Nu, Nc, a, b
+        assert(Nc > 1)
         tk = np.linspace(a,b,Ns+1)
-        tc = np.array([[(tk[i]+tk[i+1])/2+(tk[i+1]-tk[i])*(np.cos(s)/2) for s in np.linspace(-np.pi,0,Nx)] for i in range(Ns)])
+        tc = np.zeros((Ns,Nc))
+        for i in range(Ns):
+            a = tk[i]
+            b = tk[i+1]
+            tc[i,:] = (a+b)/2+(b-a)/2*np.cos(np.linspace(-np.pi,0,Nc))
         self.tk = tk
         self.tc = tc
+
+        # tensors for evaluating interpolations at collocation points
+        self.T = np.zeros((Ns,Nc,Nx))
+        self.dt = np.zeros((Ns,Nx,Nx))
+        for i in range(Ns):
+            self.dt[i,:,:] = diff_tensor(tk[i],tk[i+1],Nx)
+            for j in range(Nc):
+                self.T[i,j,:] = interp_covector(tc[i,j],tk[i],tk[i+1],Nx)
 
     def attribute_dict(self):
         attributes = {}
@@ -166,28 +179,62 @@ def fit_interpolation(x: np.ndarray, u: float, t: float, collo_params: Collocati
     Ns = collo_params.Ns
     Nx = collo_params.Nx
     Nu = collo_params.Nu
+    Nc = collo_params.Nc
     tk = collo_params.tk
     tc = collo_params.tc
 
-    # solve for x interpolation
-    A = np.zeros((Ns*Nx,Ns*Nx))   # A matrix for linear system A@c = b
-    B = np.interp(tc, t, x)
-    b = np.reshape(B,Ns*Nx)
+    # solve for x interpolation (x must be 1d)
+    A = np.zeros((Ns,Nx,Ns,Nx))
+    b = np.zeros((Ns,Nx))
+    print(A.shape)
+    print(b.shape)
+    theta = np.linspace(-np.pi,0,Nx)
     for i in range(Ns):
+        t0 = tk[i]
+        t1 = tk[i+1]
+        tvec = (t0+t1)/2+(t1-t0)/2*np.cos(theta)
+        b[i,:] = np.interp(tvec,t,x)
         for j in range(Nx):
-            A[Nx*i+j,Nx*i:Nx*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nx)
-    c,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
-    c_mat = np.reshape(c,(Ns,Nx))
+            A[i,j,i,:] = interp_covector(tvec[j],tk[i],tk[i+1],Nx)
+    c= np.linalg.tensorsolve(A,b)
+    print(c)
+    c_mat = c
+
+    A = np.zeros((Ns,Nu,Ns,Nu))
+    b = np.zeros((Ns,Nu))
+    theta = np.linspace(-np.pi,0,Nu)
+    for i in range(Ns):
+        t0 = tk[i]
+        t1 = tk[i+1]
+        tvec = (t0+t1)/2+(t1-t0)/2*np.cos(theta)
+        b[i,:] = np.interp(tvec,t,u)
+        for j in range(Nu):
+            A[i,j,i,:] = interp_covector(tvec[j],tk[i],tk[i+1],Nu)
+    d= np.linalg.tensorsolve(A,b)
+    print(d)
+    d_mat = d
+    
+
+    # solve for x interpolation
+    # A = np.zeros((Ns*Nc,Ns*Nx))   # A matrix for linear system A@c = b
+    # B = np.interp(tc, t, x)
+    # b = np.reshape(B,Ns*Nc)
+    # for i in range(Ns):
+    #     for j in range(Nc):
+    #         A[Nc*i+j,Nx*i:Nx*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nx)
+
+    # c,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
+    # c_mat = np.reshape(c,(Ns,Nx))
 
     # solve for u interpolation
-    A = np.zeros((Ns*Nu,Ns*Nu))   # A matrix for linear system A@d = B
-    B = np.interp(tc[:,:Nu], t, u)
-    b = np.reshape(B,Ns*Nu)
-    for i in range(Ns):
-        for j in range(Nu):
-            A[Nu*i+j,Nu*i:Nu*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nu)
-    d,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
-    d_mat = np.reshape(d,(Ns,Nu))
+    # A = np.zeros((Ns*Nc,Ns*Nu))   # A matrix for linear system A@d = B
+    # B = np.interp(tc[:,:Nc], t, u)
+    # b = np.reshape(B,Ns*Nc)
+    # for i in range(Ns):
+    #     for j in range(Nu):
+    #         A[Nu*i+j,Nu*i:Nu*(i+1)] = interp_covector(tc[i,j],tk[i],tk[i+1],Nu)
+    # d,err,rank,vectors = np.linalg.lstsq(A,b,rcond=None)
+    # d_mat = np.reshape(d,(Ns,Nu))
     x_interp = PiecewiseInterpolation(c_mat,tk)
     u_interp = PiecewiseInterpolation(d_mat,tk)
     return x_interp, u_interp
@@ -247,19 +294,37 @@ class HopBVP:
         '''
         Ns = self.collo_params.Ns
         Nx = self.collo_params.Nx
-        tc = self.collo_params.tc
-        c1 = z[0:Nx]
-        data = np.zeros(4)
-        I0 = interp_covector(tc[0,0],tc[0,0],tc[0,-1],Nx)
-        data[0] = (I0@c1)[0]-self.initial_cond[0]
-        I1 = interp_covector(tc[0,0],tc[0,0],tc[0,-1],Nx,ord=1)
-        data[1] = (I1@c1)[0]-self.initial_cond[1]
-        c2 = z[(Ns-1)*Nx:Ns*Nx]
-        I0 = interp_covector(tc[-1,-1],tc[-1,0],tc[-1,-1],Nx)
-        data[2] = (I0@c2)[0]-self.final_cond[0]
-        I1 = interp_covector(tc[-1,-1],tc[-1,0],tc[-1,-1],Nx,ord=1)
-        data[3] = (I1@c2)[0]-self.final_cond[1]
-        return data
+
+        # get interpolation tensors
+        T = self.collo_params.T
+        dt = self.collo_params.dt
+
+        # get state polynomial coefficients
+        x_coeffs = np.reshape(z[:Ns*Nx], (Ns,Nx), order='F')
+        xi_coeffs = x_coeffs[0,:]
+        xdoti_coeffs = dt[0,:,:]@xi_coeffs
+        xf_coeffs = x_coeffs[-1,:]
+        xdotf_coeffs = dt[-1,:,:]@xf_coeffs
+
+        return np.array([
+            np.dot(T[0,0,:],xi_coeffs)-self.initial_cond[0],
+            np.dot(T[0,0,:],xdoti_coeffs)-self.initial_cond[1],
+            np.dot(T[-1,-1,:],xf_coeffs)-self.final_cond[0],
+            np.dot(T[-1,-1,:],xdotf_coeffs)-self.final_cond[1],
+        ])        
+
+        # tc = self.collo_params.tc
+        # c1 = z[0:Nx]
+        # data = np.zeros(4)
+        # I0 = interp_covector(tc[0,0],tc[0,0],tc[0,-1],Nx)
+        # data[0] = (I0@c1)[0]-self.initial_cond[0]
+        # I1 = interp_covector(tc[0,0],tc[0,0],tc[0,-1],Nx,ord=1)
+        # data[1] = (I1@c1)[0]-self.initial_cond[1]
+        # c2 = z[(Ns-1)*Nx:Ns*Nx]
+        # I0 = interp_covector(tc[-1,-1],tc[-1,0],tc[-1,-1],Nx)
+        # data[2] = (I0@c2)[0]-self.final_cond[0]
+        # I1 = interp_covector(tc[-1,-1],tc[-1,0],tc[-1,-1],Nx,ord=1)
+        # data[3] = (I1@c2)[0]-self.final_cond[1]
 
     def continuity_constraints(self, z):
         '''
@@ -273,25 +338,26 @@ class HopBVP:
                 data (np.array): array of constraint residuals
         '''
         Ns = self.collo_params.Ns
+        Nc = self.collo_params.Nc
         Nx = self.collo_params.Nx
-        Nu = self.collo_params.Nu
         tk = self.collo_params.tk
-        data = np.zeros(3*(Ns-1))
-        for i in range(Ns-1):
-            c0, d0 = z[Nx*i:Nx*(i+1)], z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
-            a0,b0 = tk[i], tk[i+1]
-            c1, d1 = z[Nx*(i+1):Nx*(i+2)], z[Ns*Nx+Nu*(i+1):Ns*Nx+Nu*(i+2)]
-            a1,b1 = tk[i+1], tk[i+2]
-            t = tk[i+1]
-            # position
-            data[3*i] = (interp_covector(t,a0,b0,Nx)@c0)[0] - (interp_covector(t,a1,b1,Nx)@c1)[0]
-            # velocity
-            data[3*i+1] = (interp_covector(t,a0,b0,Nx,ord=1)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=1)@c1)[0]
-            # acceleration
-            #data[4*i+2] = (interp_covector(t,a0,b0,Nx,ord=2)@c0)[0] - (interp_covector(t,a1,b1,Nx,ord=2)@c1)[0]
-            # control
-            data[3*i+2] = (interp_covector(t,a0,b0,Nu)@d0)[0] - (interp_covector(t,a1,b1,Nu)@d1)[0]
-        return data
+
+        # get differentiation tensors for knot points
+        T0 = self.collo_params.T[:-1,-1,:]
+        T1 = self.collo_params.T[1:,0,:]
+        dt = self.collo_params.dt
+
+        # reshape optimization variables to get coefficients of x interpolation
+        x_coeffs = np.reshape(z[:Ns*Nx],(Ns,Nx),order='F')
+        xdot_coeffs = np.einsum('ijk,ik->ij', dt, x_coeffs)
+
+        # compute interpolations
+        x0 = np.einsum('ij,ij->i',T0,x_coeffs[:-1,:])
+        xdot0 = np.einsum('ij,ij->i',T0,xdot_coeffs[:-1,:])
+        x1 = np.einsum('ij,ij->i',T1,x_coeffs[1:,:])
+        xdot1 = np.einsum('ij,ij->i',T1,xdot_coeffs[1:,:])
+
+        return np.hstack((x0-x1,xdot0-xdot1))
 
     def dynamic_constraints(self, z):
         '''
@@ -309,25 +375,34 @@ class HopBVP:
         Ns = self.collo_params.Ns
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
-        tc = self.collo_params.tc
-        data = np.zeros(Ns*(Nx))
-        for i in range(Ns):
-            c = z[Nx*i:Nx*(i+1)]
-            d = z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
-            a,b = tc[i,0],tc[i,-1]
-            I0 = np.vstack([interp_covector(_t,a,b,Nx,ord=0) for _t in tc[i,:]])
-            I1 = np.vstack([interp_covector(_t,a,b,Nx,ord=1) for _t in tc[i,:]])
-            I2 = np.vstack([interp_covector(_t,a,b,Nx,ord=2) for _t in tc[i,:]])
-            x = (I0@c)
-            xdot = (I1@c)
-            xddot = (I2@c)
-            u = (I0[:,:Nu]@d)
-            f = np.array([
-                dynamics.evaluate(x[i], xdot[i], u[i], self.dynamic_params)
-                for i, _t in enumerate(tc[i,:])
-                ])
-            data[(Nx)*i:(Nx)*(i+1)] = xddot - f
-        return data
+        Nc = self.collo_params.Nc
+
+        # get interpolation tensors
+        T = self.collo_params.T
+        dt = self.collo_params.dt
+
+        # get state polynomial coefficients
+        x_coeffs = np.reshape(z[:Ns*Nx],(Ns,Nx),order='F')
+        xdot_coeffs = np.einsum('ijk,ik->ij',dt,x_coeffs)
+        xddot_coeffs = np.einsum('ijk,ik->ij',dt,xdot_coeffs)
+
+        # get control polynomial coefficients
+        u_coeffs = np.reshape(z[Ns*Nx:],(Ns,Nu),order='F')
+
+        # Store defects in this array
+        defects = np.zeros((Ns,Nc))
+
+        # compute x, xdot, xddot, and u
+        x = np.einsum('ijk,ik->ij',T,x_coeffs)
+        xdot = np.einsum('ijk,ik->ij',T,xdot_coeffs)
+        xddot = np.einsum('ijk,ik->ij',T,xddot_coeffs)
+        u = np.einsum('ijk,ik->ij',T[:,:,:Nu],u_coeffs) 
+
+        # compute residuals
+        for (i,j) in np.ndindex((Ns,Nc)):
+            defects[i,j] = stance_dynamics(x[i,j],xdot[i,j],u[i,j],self.dynamic_params)
+        defects = defects - xddot
+        return defects.flatten(order='F')
 
     def inequality_constraints(self, z):
         '''
@@ -343,26 +418,31 @@ class HopBVP:
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
-        tc = self.collo_params.tc
+        Nc = self.collo_params.Nc
+        T = self.collo_params.T
         Kx =  self.dynamic_params.Kx
         x0 = self.dynamic_params.x0
         lb = self.lb
         ub = self.ub
-        data = np.zeros(Ns*(4*Nx))
-        for i in range(Ns):
-            for j in range(Nx):
-                c = z[Nx*i:Nx*(i+1)]
-                d = z[Ns*Nx+Nu*i:Ns*Nx+Nu*(i+1)]
-                t,a,b = tc[i,j], tc[i,0], tc[i,-1]
-                I = interp_covector(t,a,b,Nx)
-                theta = (I@c)[0]
-                data[4*(Nx*i+j)] = theta - lb[0]
-                data[4*(Nx*i+j)+1] = ub[0] - theta
-                u = (I[:,:Nu]@d)[0]
-                data[4*(Nx*i+j)+2] = u + Kx*(x0-theta) - lb[1]
-                data[4*(Nx*i+j)+3] = ub[1] - u - Kx*(x0-theta)
-            return data
-    
+        x_coeffs = np.reshape(z[:Ns*Nx],(Ns,Nx),order='F')
+        u_coeffs = np.reshape(z[Ns*Nx:],(Ns,Nu),order='F')
+
+        # compute state and control interpolation
+        x = np.einsum('ijk,ik->ij',T,x_coeffs)
+        u = np.einsum('ijk,ik->ij',T[:,:,:Nu],u_coeffs)
+
+        # compute motor torque
+        tau = u + Kx*(x0-x)
+
+        # compute bounds on state and motor torque
+        data = np.zeros((Ns,Nc,4))
+        data[:,:,0] = x - lb[0]
+        data[:,:,1] = ub[0] - x
+        data[:,:,2] = tau - lb[0]
+        data[:,:,3] = ub[0] - tau
+
+        return data.flatten(order='F') 
+
     def cost(self, z, Kv = .546, Kfudge=0.78, R = .29):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
@@ -383,14 +463,12 @@ class HopBVP:
         for (i,j) in np.ndindex((Nx,Nx)):
             prod[i+j,i,j] = 1
         # tensor to integrate a 2*(Nx-1) degree polynomial over the spline domains
-        I = np.vstack([interp_covector(None,tk[i],tk[i+1],ord=-1) for i in range(Ns)])
+        I = np.vstack([interp_covector(0,tk[i],tk[i+1],2*Nx-1,ord=-1) for i in range(Ns)])
         # bilinear form composes integration with product
         prod_int = np.einsum('ij,jkl->ikl', I, prod)
 
         # differentiation tensor
-        dt = np.zeros((Ns,Nx,Nx))
-        for i in range(Ns):
-            dt[i,:,:] = diff_tensor(tk[i],tk[i+1],Nx)
+        dt = self.collo_params.dt
 
         # torque
         tau = -Kx*x
@@ -401,11 +479,11 @@ class HopBVP:
 
         # velocity
         xdot = np.einsum('ijk,ik->ij', dt, x)
-
+            
         # mechanical work
         # derivative with respect to torque
         mech_work_dtau = np.einsum('ijk,ik->ij', prod_int, xdot)
-        mech_work = np.einsum('ij,ij->i', mech_work, tau)
+        mech_work = np.einsum('ij,ij->i', mech_work_dtau, tau)
 
         # derivative with respect to xdot
         mech_work_dxdot = np.einsum('ijk,ij->ik', prod_int, tau)
@@ -417,7 +495,6 @@ class HopBVP:
 
         # accumulate derivative with resupect to u
         u_grad += mech_work_dtau[:,:Nu]
-
 
         # thermal work
         current = tau / (Kv*Kfudge)
@@ -555,8 +632,8 @@ class HopBVP:
         Ns = self.collo_params.Ns
         Nx = self.collo_params.Nx
         Nu = self.collo_params.Nu
-        self.c_mat = np.reshape(self.result.x[:Ns*Nx],(Ns,Nx))
-        self.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu))
+        self.c_mat = np.reshape(self.result.x[:Ns*Nx],(Ns,Nx),order='F')
+        self.d_mat = np.reshape(self.result.x[Ns*Nx:],(Ns,Nu),order='F')
 
         return self.result
 
