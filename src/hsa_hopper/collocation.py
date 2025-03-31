@@ -113,6 +113,7 @@ class CollocationParameters:
                 attributes['Ns'],
                 attributes['Nx'],
                 attributes['Nu'],
+                attributes['Nc'],
                 attributes['a'],
                 attributes['b']
                 )
