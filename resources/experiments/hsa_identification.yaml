@@ -1,0 +1,19 @@
+servo_pulse:
+  - 1300
+  - 1500
+  - 1700
+motor_min_deg:
+  - -30.
+  - -30.
+  - -30.
+motor_max_deg: 
+  - 5.
+  - 5.
+  - 5.
+jiggle_frequencies: 
+  - 2.
+  - 3.
+jiggle_time: 6.
+hardware: resources/hardware.yaml
+data_folder: data/hsa_identification
+note: very thick closed HSA

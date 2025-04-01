@@ -22,9 +22,10 @@ async def main(position_deg, kp_deg, kd_deg):
     while (time.perf_counter_ns() - t0) / 1e9 < 2.:
         result = await robot.set_position_deg(position_deg, 
                                               kp_scale=kp_scale, 
-                                              kd_scale=kd_scale)
+                                              kd_scale=kd_scale,
+                                              query=True)
         if result is not None:
-            print((result.position, result.torque))
+            print((_RAD_TO_DEG*robot.convert_motor_pos(result), result.torque))
         pass
     # result = await robot.motor.set_torque(0., query_state = True)
     result = await robot.motor.controller.set_stop()
