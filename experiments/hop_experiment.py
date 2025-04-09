@@ -1,9 +1,8 @@
 from hsa_hopper.hardware import *
-from hsa_hopper.kinematics import KinematicParameters, forward_kinematics
 from hsa_hopper.collocation import PiecewiseInterpolation
 from hsa_hopper.controller import HopController
 from hsa_hopper.constants import _REV_TO_DEG, _RAD_TO_DEG
-from hsa_hopper.force_sensor import ForceSensorProcess
+# from hsa_hopper.force_sensor import ForceSensorProcess
 import math
 import yaml
 import numpy as np
@@ -16,37 +15,19 @@ from collections import deque
 
 class TrajectoryData():
     def __init__(self):
-        self.x_deg = deque()
-        self.x_moteus_deg = deque()
-        self.y = deque()
-        self.l = deque()
+        self.x_rad= deque()
         self.mode = deque()
-        self.u_ff = deque()
-        self.q_current = deque()
-        self.d_current = deque()
         self.torque = deque()
         self.t_s = deque()
         
     def append(self,
-        x_deg,
-        x_moteus_deg,           
-        y,
-        l,
+        x_rad,
         mode,
-        u_ff,
-        q_current,
-        d_current,
         torque,
         t_s
     ):
-        self.x_deg.append(x_deg)
-        self.x_moteus_deg.append(x_moteus_deg)
-        self.y.append(y)
-        self.l.append(l) 
+        self.x_rad.append(x_rad)
         self.mode.append(mode)
-        self.u_ff.append(u_ff)
-        self.q_current.append(q_current)
-        self.d_current.append(d_current)
         self.torque.append(torque)
         self.t_s.append(t_s)
 
@@ -84,20 +65,26 @@ async def main(experiment_config):
     # construct the force sensor process
     with open(hardware_config_path, 'r') as f:
         hardware_config = yaml.load(f, yaml.Loader)
-        ati_sensor_config = hardware_config['ati_sensor']
+        # ati_sensor_config = hardware_config['ati_sensor']
 
-    ati_sensor = ForceSensorProcess(ati_sensor_config)
-    ati_sensor.start()
+    # ati_sensor = ForceSensorProcess(ati_sensor_config)
+    # ati_sensor.start()
     
     #### build the HopController ####
     controller_config = experiment_config['controller']
+    u_interp = []
+    for attrs in controller_config['u_interp']:
+        if attrs is None:
+            u_interp.append(None)
+        else:
+            u_interp.append(PiecewiseInterpolation.make_from_dict(attrs))
 
-    # controller gains (in units radians for motor angle)
+    print(len(u_interp))
     controller = HopController(
         controller_config['kp'], 
         controller_config['kd'], 
         controller_config['x0'], 
-        controller_config['u_ff'], 
+        u_interp,
         float(controller_config['sigma']),
         int(controller_config['window']))
 
@@ -110,6 +97,7 @@ async def main(experiment_config):
 
     # apply gains from mode 0 (startup) and initial setpoint
     print('Initializing...')
+    controller.initialize(HopController._STARTUP, t0_s)
     while (time.perf_counter()-t0_s) < 2.:
         kp_scale = controller.kp[HopController._STARTUP] / kp_moteus
         kd_scale = controller.kd[HopController._STARTUP] / kd_moteus
@@ -121,10 +109,8 @@ async def main(experiment_config):
                 query=True)
         t_s = time.perf_counter()
         x_rad = robot.convert_motor_pos(motor_state)
-        controller.update(x_rad, t_s)
-        controller.mode = HopController._STARTUP
-        kp, kd, x0_rad, u_ff = controller.output()
-        
+        controller.update(x_rad,t_s) 
+
     # arrays for holding data from each hop
     hops = []
     this_hop_data = None
@@ -132,12 +118,13 @@ async def main(experiment_config):
     # initialize controller
     print('Begin!')
     t_s = t0_s = time.perf_counter()
-    controller.initialize(t0_s)
+    controller.initialize(HopController._STARTUP, t0_s)
     
-    last_mode = controller.mode = HopController._STANCE1
+    last_mode = controller.mode = HopController._STARTUP
     while (t_s-t0_s) < experiment_config['duration']:
         try:
             t_s = time.perf_counter()
+            controller.update(x_rad, t_s)
             kp, kd, x0_rad, u_ff = controller.output(t_s)
             kp_scale = kp / kp_moteus
             kd_scale = kd / kd_moteus
@@ -158,7 +145,6 @@ async def main(experiment_config):
             # update time, compute forward kinematics
             t_s = time.perf_counter()
             x_rad = robot.convert_motor_pos(motor_state)
-            f, J = forward_kinematics(robot.kinematics, x_rad, jacobian=True)
 
             # update the controller
             controller.update(x_rad, t_s)
@@ -168,7 +154,7 @@ async def main(experiment_config):
             if (this_mode == HopController._STANCE) and (last_mode != HopController._STANCE):
                 ps0 = await robot.pdb0.get_power_state()
                 ps1 = await robot.pdb1.get_power_state()
-                ati_sensor.start_stream()
+                # ati_sensor.start_stream()
                 this_hop_data =  {
                         'traj' : TrajectoryData(),
                         'initial_energy' : (ps0.energy+ps1.energy)*3600
@@ -177,20 +163,14 @@ async def main(experiment_config):
             last_mode = this_mode
             if this_hop_data is not None:
                 this_hop_data['traj'].append(
-                    x_rad * _RAD_TO_DEG,
-                    motor_state.position * _REV_TO_DEG,           
-                    f[0],
-                    f[1],
+                    x_rad,
                     controller.mode,
-                    u_ff,
-                    motor_state.q_current,
-                    motor_state.d_current,
                     motor_state.torque,
                     t_s
                 )
 
     await robot.motor.controller.set_stop()
-    ati_sensor.stop_stream()
+    # ati_sensor.stop_stream()
 
     # compute electrical energy consumed by the hops
     hop_energy = []
@@ -215,7 +195,7 @@ async def main(experiment_config):
     pd.DataFrame({'hop_energy' : hop_energy}).to_csv(path)
 
     # save force sensor data
-    ati_sensor.write_data(os.path.join(experiment_folder, 'ati_measurements.csv'))
+    # ati_sensor.write_data(os.path.join(experiment_folder, 'ati_measurements.csv'))
     
     # save experiment config for reproduction
     with open(os.path.join(experiment_folder, 'experiment_config.yaml'), 'w') as f:
@@ -225,10 +205,10 @@ async def main(experiment_config):
         yaml.dump(robot.hardware_config, f)
 
     # end ati_sensor child process
-    ati_sensor.stop_process()
-    ati_sensor.join(timeout=1)
-    if ati_sensor.is_alive():
-        ati_sensor.terminate()
+    # ati_sensor.stop_process()
+    # ati_sensor.join(timeout=1)
+    # if ati_sensor.is_alive():
+    #     ati_sensor.terminate()
 
 import sys
 if __name__ == "__main__":

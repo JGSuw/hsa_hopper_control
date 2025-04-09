@@ -19,13 +19,16 @@ class HopController():
         self.kd = kd
         self.x0_rad = x0_rad
         self.u_interp = u_interp
-        self.u_ff = 0
         self.sigma = sigma
         self.N = window//2
         self.tdata = np.zeros(window)
         self.xdata = np.zeros(window)
         self.A_mat = np.zeros((window,3))
         self.A_mat[:,0] = np.ones(window)
+
+    def initialize(self, mode, t0_s):
+        self.mode = mode
+        self.t0_s = t0_s
 
     def quad_fit(self):
         dt = self.tdata-self.tdata[self.N]
@@ -77,15 +80,21 @@ class HopController():
                 self.t0_s = t_s
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
-        self.u_ff = self.u_interp[self.mode].evaluate(t_s-self.t0_s)
+        # u_interp = self.u_interp[self.mode]
+        # if u_interp is not None:
+        #     self.u_ff = self.u_interp[self.mode].evaluate(t_s-self.t0_s)
+        # else:
+        #     self.u_ff = 0
 
-    def output(self):
+    def output(self, t_s):
         if self.mode == HopController._STARTUP:
-            return self.kp[0], self.kd[0], self.x0_rad[0], self.u_ff
+            u_ff = self.u_interp[0].evaluate(t_s-self.t0_s)
+            return self.kp[0], self.kd[0], self.x0_rad[0], u_ff
         elif self.mode == HopController._FLIGHT:
-            return self.kp[1], self.kd[1], self.x0_rad[0], self.u_ff
-        elif self.mode == HopController._STANCE1:
-            return self.kp[2], self.kd[2], self.x0_rad[0], self.u_ff
+            return self.kp[1], self.kd[1], self.x0_rad[1], 0
+        elif self.mode == HopController._STANCE:
+            u_ff = self.u_interp[2].evaluate(t_s-self.t0_s)
+            return self.kp[2], self.kd[2], self.x0_rad[2], u_ff
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
 

@@ -8,9 +8,12 @@ _QUERY_RESOLUTION = moteus.QueryResolution()
 _QUERY_RESOLUTION.position = moteus.F32
 _QUERY_RESOLUTION.velocity = moteus.IGNORE
 _QUERY_RESOLUTION.torque = moteus.F32
-_QUERY_RESOLUTION.q_current = moteus.INT16
-_QUERY_RESOLUTION.d_current = moteus.INT16
-_QUERY_RESOLUTION.temperature = moteus.INT8
+# _QUERY_RESOLUTION.q_current = moteus.INT16
+_QUERY_RESOLUTION.q_current = moteus.IGNORE
+# _QUERY_RESOLUTION.d_current = moteus.INT16
+_QUERY_RESOLUTION.d_current = moteus.IGNORE
+# _QUERY_RESOLUTION.temperature = moteus.INT8
+_QUERY_RESOLUTION.temperature = moteus.IGNORE
 _QUERY_RESOLUTION.voltage = moteus.IGNORE
 _QUERY_RESOLUTION._extra = {
     moteus.Register.MODE : moteus.INT8,
@@ -20,12 +23,12 @@ _QUERY_RESOLUTION._extra = {
 class MotorState:
     def __init__(self, state):
         self.position = state.values[moteus.Register.POSITION]
-        self.q_current = state.values[moteus.Register.Q_CURRENT] * 1.
-        self.d_current = state.values[moteus.Register.D_CURRENT] * 1.
+        # self.q_current = state.values[moteus.Register.Q_CURRENT] * 1.
+        # self.d_current = state.values[moteus.Register.D_CURRENT] * 1.
         self.torque = state.values[moteus.Register.TORQUE]
-        self.temperature = state.values[moteus.Register.TEMPERATURE]
-        self.mode = state.values[moteus.Register.MODE]
-        self.fault = state.values[moteus.Register.FAULT]
+        # self.temperature = state.values[moteus.Register.TEMPERATURE]
+        # self.mode = state.values[moteus.Register.MODE]
+        # self.fault = state.values[moteus.Register.FAULT]
 
 class Motor():
     def __init__(self, min_pos_rev, max_pos_rev, id = 1, transport = None):
