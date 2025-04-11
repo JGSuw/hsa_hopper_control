@@ -42,6 +42,7 @@ async def main(experiment_config):
 
     freqs = np.array(experiment_config['jiggle_frequencies'])
     # amps = np.array(experiment_config['jiggle_amplitude'])
+    ff_torque_amp = experiment_config['ff_torque_amp']
     T = experiment_config['jiggle_time']
     servo_pos = np.array(experiment_config['servo_pulse'])
     motor_min_deg = np.array(experiment_config['motor_min_deg'])
@@ -59,12 +60,18 @@ async def main(experiment_config):
         a,b = motor_min_deg[i], motor_max_deg[i]
         x0 = (b+a)/2
         amplitude = (b-a)/(2*len(freqs))
-        y = lambda t: x0 - amplitude*sum(np.cos(2*np.pi*f*(t-t0)) for f in freqs)
+        y = lambda t: x0 - amplitude*sum(np.cos(2*np.pi*f*(t-t0)-np.pi) for f in freqs)/len(freqs)
+        u_ff = lambda t: ff_torque_amp*sum(np.cos(2*np.pi*f*(t-t0)-np.pi) for f in freqs)/len(freqs)
         # y = lambda t: sum(amps[i]*np.cos(2*np.pi*freqs[i]*(t-t0)) for i in range(len(freqs)))
         try:
             while (t-t0) < T:
                 motor_setpoint = y(t)
-                motor_state = await robot.set_position_deg(motor_setpoint, query=True, kd_scale = .5)
+                motor_state = await robot.set_position_deg(
+                    motor_setpoint, 
+                    query=True, 
+                    kp_scale=3., 
+                    kd_scale = .1,
+                    feedforward_torque=u_ff(t))
                 # motor_state = await robot.set_position_rad(motor_setpoint, query=True, kp_scale = 2., kd_scale = .4)
                 t = time.perf_counter()
                 if motor_state is not None:

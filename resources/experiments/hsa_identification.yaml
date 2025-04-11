@@ -1,13 +1,19 @@
 servo_pulse:
+  - 1300
   - 1500
+  - 1700
 motor_min_deg: 
-  - -50.
+  - -65.
+  - -65.
+  - -65.
 motor_max_deg: 
-  - 30.
+  - 20.
+  - 20.
+  - 20.
 jiggle_frequencies: 
-  - 3.
-  - 1.5
-jiggle_time: 14.
+  - 2.25
+jiggle_time: 9.
+ff_torque_amp: 0.
 hardware: resources/hardware.yaml
 data_folder: data/hsa_identification
-note: spiked closed hsa
+note: thick HSA
