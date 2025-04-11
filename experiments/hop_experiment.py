@@ -78,12 +78,20 @@ async def main(experiment_config):
             u_interp.append(None)
         else:
             u_interp.append(PiecewiseInterpolation.make_from_dict(attrs))
-
-    print(len(u_interp))
+    x_interp = []
+    for attrs in controller_config['x_interp']:
+        if attrs is None:
+            x_interp.append(None)
+        else:
+            x_interp.append(PiecewiseInterpolation.make_from_dict(attrs))
+    
     controller = HopController(
         controller_config['kp'], 
         controller_config['kd'], 
-        controller_config['x0'], 
+        np.array(controller_config['kx']), 
+        np.array(controller_config['x0']), 
+        np.array(controller_config['b']), 
+        x_interp,
         u_interp,
         float(controller_config['sigma']),
         int(controller_config['window']))
@@ -101,7 +109,7 @@ async def main(experiment_config):
     while (time.perf_counter()-t0_s) < 2.:
         kp_scale = controller.kp[HopController._STARTUP] / kp_moteus
         kd_scale = controller.kd[HopController._STARTUP] / kd_moteus
-        x0 = controller.x0_rad[HopController._STARTUP]
+        x0 = controller.x0[HopController._STARTUP]
         motor_state = await robot.set_position_rad(
                 x0,
                 kp_scale = kp_scale,

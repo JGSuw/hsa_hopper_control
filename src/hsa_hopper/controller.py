@@ -6,10 +6,13 @@ class HopController():
     _FLIGHT = 1
     _STANCE = 2
     def __init__(self,
-                 kp: list,          # Proportional gain in stance
-                 kd: list,          # Derivative gain in stance
-                 x0_rad: list,      # Angle spring equilibrium in stance
-                 u_interp: list,    # list of feed-forward torque interpolations
+                 kp: float,         # tracking error propertional gain
+                 kd: float,         # tracking error derivative gain
+                 kx: list,          # virtual (motor angle) spring constant
+                 x0: list,          # virtual (motor angle) spring offset
+                 b: list,           # virtual (motor angle) damping coefficient
+                 x_interp: list,    # reference trajectory for each mode
+                 u_interp: list,    # reference command for each mode
                  sigma: float,      # flight/stance switching position
                  window: int,       # window size for velocity estimation via savgol of quadratic interpolation
                  ):
@@ -17,7 +20,10 @@ class HopController():
         self.t0_s = None
         self.kp = kp
         self.kd = kd
-        self.x0_rad = x0_rad
+        self.kx = kx
+        self.x0 = x0
+        self.b = b
+        self.x_interp = x_interp
         self.u_interp = u_interp
         self.sigma = sigma
         self.N = window//2
@@ -25,6 +31,9 @@ class HopController():
         self.xdata = np.zeros(window)
         self.A_mat = np.zeros((window,3))
         self.A_mat[:,0] = np.ones(window)
+        self.x_error = 0
+        self.xdot_error = 0
+        self.u_ff = 0
 
     def initialize(self, mode, t0_s):
         self.mode = mode
@@ -43,12 +52,10 @@ class HopController():
         xdotp1 = coeffs[1] + 2*dt[self.N+1]*coeffs[2]
         return xdotm1 > 0 and xdotp1 < 0
     
-    def flight_switch_condition(self):
-        coeffs, dt = self.quad_fit()
+    def flight_switch_condition(self, coeffs):
         return coeffs[0] <= self.sigma and coeffs[1] < 0
     
-    def stance_switch_condition(self):
-        coeffs, dt = self.quad_fit()
+    def stance_switch_condition(self, coeffs):
         return coeffs[0] >= self.sigma and coeffs[1] > 0
 
     def update(self, x_rad: float, t_s: float):
@@ -66,6 +73,8 @@ class HopController():
         self.tdata[-1] = t_s
         self.xdata[0:-1] = self.xdata[1:]
         self.xdata[-1] = x_rad
+        coeffs, dt = self.quad_fit()
+        # check guard conditions to switch modes
         if self.mode == HopController._STARTUP:
             if self.flight_switch_condition():
                 self.mode = HopController._FLIGHT
@@ -80,22 +89,33 @@ class HopController():
                 self.t0_s = t_s
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
-        # u_interp = self.u_interp[self.mode]
-        # if u_interp is not None:
-        #     self.u_ff = self.u_interp[self.mode].evaluate(t_s-self.t0_s)
-        # else:
-        #     self.u_ff = 0
 
-    def output(self, t_s):
+        # compute controls
         if self.mode == HopController._STARTUP:
-            u_ff = self.u_interp[0].evaluate(t_s-self.t0_s)
-            return self.kp[0], self.kd[0], self.x0_rad[0], u_ff
+            x_interp = self.x_interp[HopController._STARTUP]
+            u_interp = self.x_unterp[HopController._STARTUP]
+            x_ref = x_interp.evaluate(t_s-self.t0_s)
+            self.x_error = x_error = x_ref - coeffs[0]
+            xdot_ref = x_interp.evaluate(t_s-self.t0_s,ord=1)
+            self.xdot_error = xdot_error = xdot_ref - coeffs[1]
+            self.u_ff = self.kp*x_error + self.kd*xdot_error
+            self.u_ff += u_interp.evaluate(t_s-self.t0_s)
         elif self.mode == HopController._FLIGHT:
-            return self.kp[1], self.kd[1], self.x0_rad[1], 0
+            x_interp = self.x_interp[HopController._FLIGHT]
+            self.u_ff = 0
         elif self.mode == HopController._STANCE:
-            u_ff = self.u_interp[2].evaluate(t_s-self.t0_s)
-            return self.kp[2], self.kd[2], self.x0_rad[2], u_ff
+            x_interp = self.x_interp[HopController._STANCE]
+            u_interp = self.x_unterp[HopController._STANCE]
+            x_ref = x_interp.evaluate(t_s-self.t0_s)
+            self.x_error = x_error = x_ref - coeffs[0]
+            xdot_ref = x_interp.evaluate(t_s-self.t0_s,ord=1)
+            self.xdot_error = xdot_error = xdot_ref - coeffs[1]
+            self.u_ff = self.kp*x_error + self.kd*xdot_error
+            self.u_ff += u_interp.evaluate(t_s-self.t0_s)
         else:
             raise RuntimeError(f'Invalid value self.mode={self.mode} encountered in update.')
+
+    def output(self, t_s):
+        return self.kx[self.mode], self.b[self.mode], self.x0[self.mode], self.u_ff
 
 
