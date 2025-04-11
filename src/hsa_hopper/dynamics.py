@@ -15,14 +15,14 @@ class DynamicsParameters:
             Kx: float,
             x0: float,
             kinematics: KinematicParameters,
-            hsa_potential = None,
+            hsa_model = None,
             psi = None
     ):
         self.J, self.m_cart, self.m_foot = J, m_cart, m_foot 
         self.bx, self.by, self.bl = bx, by, bl
         self.Kx, self.x0, self.psi = Kx, x0, psi
         self.kinematics = kinematics
-        self.hsa_potential = hsa_potential
+        self.hsa_model = hsa_model
     
     def attribute_dict(self):
         attributes = {}
@@ -63,11 +63,13 @@ def stance_dynamics(
     coriolis = params.m_cart*(dy*xdot)*(d2y*xdot)
     rayleigh = (params.bx+params.by*dy**2+params.bl*dl**2)*xdot
     potential = params.Kx*(x-params.x0) + params.m_cart*g*dy
-    if params.hsa_potential is not None:
-        z = np.array([l,params.psi])
-        zdot = np.array([ldot, 0])
-        potential += dl*(params.hsa_potential.dV(z)+params.hsa_potential.dR(z,zdot))
-    acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
+    if params.hsa_model is not None:
+        spring_torque = params.hsa_model.spring_force(l,params.psi)*dl
+        dissipation_torque = params.hsa_model.dissipation_force(l,ldot,params.psi)*dl
+    else:
+        spring_torque = 0
+        dissipation_torque = 0
+    acceleration_rad = (u-spring_torque-dissipation_torque-potential-coriolis-rayleigh)/inertia
     return acceleration_rad
 
 def flight_dnyamics(
@@ -99,9 +101,11 @@ def flight_dnyamics(
     coriolis = params.m_cart*(dy*xdot)*(d2y*xdot)
     rayleigh = (params.bx+params.by*dy**2+params.bl*dl**2)*xdot
     potential = params.Kx*(x-params.x0) + params.m_foot*g*dl
-    if params.hsa_potential is not None:
-        z = np.array([l,params.psi])
-        zdot = np.array([ldot, 0])
-        potential += dl*(params.hsa_potential.dV(z)+params.hsa_potential.dR(z,zdot))
-    acceleration_rad = (u-potential-coriolis-rayleigh)/inertia
+    if params.hsa_model is not None:
+        spring_torque = params.hsa_model.spring_force(l,params.psi)*dl
+        dissipation_torque = params.hsa_model.dissipation_force(l,ldot,params.psi)*dl
+    else:
+        spring_torque = 0
+        dissipation_torque = 0
+    acceleration_rad = (u-spring_torque-dissipation_torque-potential-coriolis-rayleigh)/inertia
     return acceleration_rad

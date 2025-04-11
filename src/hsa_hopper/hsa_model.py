@@ -15,10 +15,9 @@ class HSAModel:
                  K: float,          # linear spring rate
                  F0: float,         # spring preload
                  b: float,          # linear dissipation term
+                 y: np.ndarray,     # location of basis functions in configuration space
                  w_c: np.ndarray,   # conservative kernel weights i.e. estimates of potential at configuration
-                 y_c: np.ndarray,   # basis function locations for conservative kernels
                  w_d: np.ndarray,   # dissipative kernel weights i.e. estimates of potential at configuration
-                 y_d: np.ndarray,   # basis function locations for dissipative kernels
                  a: float,          # smoothness parameter for dissipation potential
                  s: float,
                  kind=LINEAR):         
@@ -27,74 +26,128 @@ class HSAModel:
         self.b = b
         self.kind = kind
         if kind != HSAModel.LINEAR:
-            assert(w_c.shape[0] == y_c.shape[1])
+            assert(w_c.shape == (y.shape[0],))
             self.w_c = w_c
-            self.y_c = y_c
-            assert(w_d.shape[0] == y_d.shape[1])
+            self.y = y
+            assert(w_d.shape == (y.shape[0],))
             self.w_d = w_d
-            self.y_d = y_d
             self.a = a
             self.s = s
-            self.Sc = Sc = np.cov(y_c)
-            self.sc = np.linalg.det(Sc)
-            self.Scinv = Scinv = np.linalg.inv(Sc)
-            self.Sd = Sd = np.cov(y_d)
-            self.sd = np.linalg.det(Sd)
-            self.Sdinv = Sdinv = np.linalg.inv(Sd)
+            # covariance of basis centers
+            self.S = S = np.cov(y,rowvar=False)
+            self.Sdet = np.linalg.det(S)
+            self.Sinv = Sinv = np.linalg.inv(S)
 
             # distance function, and its gradient, and hessian
-            self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))/self.s**2
-            self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i]))/self.s**2
-            self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))/self.s**2
-            self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i]))/self.s**2
+            # self.rhoc = lambda z, i: np.dot(z-self.y_c[:,i], Scinv@(z-self.y_c[:,i]))/self.s**2
+            # self.drhoc = lambda z, i: (2*Scinv@(z-self.y_c[:,i]))/self.s**2
+            # self.rhod = lambda z, i: np.dot(z-self.y_d[:,i], Sdinv@(z-self.y_d[:,i]))/self.s**2
+            # self.drhod = lambda z, i: (2*Sdinv@(z-self.y_d[:,i]))/self.s**2
 
 
             # conservative kernel, its gradient, and hessian
-            self.kc = lambda z, i: np.exp(-self.rhoc(z,i))
-            self.dkc = lambda z, i: self.kc(z, i)*(-self.drhoc(z,i))
+            # self.kc = lambda z, i: np.exp(-self.rhoc(z,i))
+            # self.dkc = lambda z, i: self.kc(z, i)*(-self.drhoc(z,i))
 
             # activation function and derivative, used in disspation kernel
-            if kind == HSAModel.GENERALIZED:
-                self.f = lambda x: quadratic_f(x, self.a)
-                self.df = lambda x: quadratic_df(x, self.a)
+            # if kind == HSAModel.GENERALIZED:
+            self.f = lambda x: quadratic_f(x, self.a)
+            self.df = lambda x: quadratic_df(x, self.a)
+
             # disspation kernel and its gradient
-            self.kd = lambda z, zdot, i: self.f(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))
-            self.dkd = lambda z, zdot, i: self.df(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))*self.drhod(z,i)
+            # self.kd = lambda z, zdot, i: self.f(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))
+            # self.dkd = lambda z, zdot, i: self.df(np.dot(self.drhod(z,i),zdot))*np.exp(-self.rhod(z,i))*self.drhod(z,i)
 
-    def V(self, z: np.ndarray):
-        return sum(self.w_c[i]*self.kc(z,i) for i in range(self.w_c.shape[0])) + .5*self.K*z[0]**2
+    def basis_norm(self, l: np.ndarray, psi: float, grad=False):
+        assert(type(l) == np.ndarray)
+        z = np.zeros((*l.shape,2))
+        z[...,0] = l
+        z[...,1] = psi
+        delta = np.zeros((self.y.shape[0],*z.shape))
+        for i in range(delta.shape[0]):
+            delta[i,...] = z - self.y[i,:]
+        SinvDelta = np.einsum('ik,...k->...i', self.Sinv, delta)
+        norm = np.einsum('...i,...i->...',SinvDelta,delta)/(2*self.s**2)
+        if grad:
+            return norm, SinvDelta[...,0]/self.s**2
+        else:
+            return norm
 
-    def R(self, z: np.ndarray, zdot: np.ndarray):
-        return sum(self.w_d[i]*self.kd(z,zdot,i) for i in range(self.w_d.shape[0])) + .5*self.b*zdot[0]**2
+    def spring_kernel(self, l: np.ndarray, psi: float):
+        norm = self.basis_norm(l, psi) # (i,j) indexed
+        return np.exp(-norm)
+        
+    def spring_potential(self, l: np.ndarray, psi: float):
+        if self.kind == HSAModel.LINEAR:
+            return .5*l*(self.K*l+self.F0)
+        else:
+            kv = self.spring_kernel(l,psi)
+            return np.einsum('i...,i->...', kv, self.w_c) + .5*l*(self.K*l+self.F0)
+        
+    def spring_force(self, l: np.ndarray, psi: float):
+        if self.kind == HSAModel.LINEAR:
+            return l*self.K+self.F0
+        else:
+            norm, norm_grad = self.basis_norm(l, psi, grad=True)
+            dkdl = -np.exp(-norm)*norm_grad
+            return np.einsum('i...,i->...',dkdl,self.w_c)+l*self.K+self.F0
+        
+    def dissipation_kernel(self, l: np.ndarray, ldot: np.ndarray, psi:float):
+        norm = self.basis_norm(l,psi)
+        # norm_dot = np.einsum('ij,i->ij',norm_grad,ldot)
+        f = self.f(ldot)
+        return f*np.exp(-norm)
     
-    def dV(self, z: np.ndarray):
-        return sum(self.w_c[i]*self.dkc(z,i)[0] for i in range(self.w_c.shape[0])) + self.K*z[0] + self.F0
-
-    def dR(self, z: np.ndarray, zdot: np.ndarray):
-        return sum(self.w_d[i]*self.dkd(z,zdot,i)[0] for i in range(self.w_d.shape[0])) + self.b*zdot[0]
+    def dissipation_potential(self, l: np.ndarray, ldot:np.ndarray, psi: float):
+        if self.kind == HSAModel.LINEAR:
+            return .5*self.b*ldot**2
+        else:
+            kd = self.dissipation_kernel(l, ldot, psi)
+            return np.einsum('i...,i->...',kd,self.w_d)+.5*self.b*ldot**2
+        
+    def dissipation_force(self, l:np.ndarray, ldot: np.ndarray, psi: float):
+        if self.kind == HSAModel.LINEAR:
+            return self.b*ldot
+        else:
+            norm, norm_grad = self.basis_norm(l,psi,grad=True)
+            df = self.df(ldot)
+            dkdldot = df*np.exp(-norm)
+            return np.einsum('i...,i->...',dkdldot,self.w_d)+self.b*ldot
+        
+    def covectors(self, l: np.ndarray, ldot:np.ndarray, psi: float, grad=False):
+        if grad:
+            norm, norm_grad = self.basis_norm(l,psi,grad=True)
+            k = np.exp(-norm)
+            f = self.f(ldot)
+            df = self.df(ldot)
+            dk = -k*norm_grad
+            return k, f*k, dk, df*k
+        else:
+            norm = self.basis_norm(l,psi)
+            k = np.exp(-norm)
+            f = self.f(ldot)
+            return k, f*k
 
     def attribute_dict(self):
         if self.kind != HSAModel.LINEAR:
             attributes = {
-                'K' : self.K,
-                'F0' : self.F0,
-                'b': self.b, 
+                'K' : float(self.K),
+                'F0' : float(self.F0),
+                'b': float(self.b), 
+                'y': self.y.tolist(), 
                 'w_c': self.w_c.tolist(), 
-                'y_c': self.y_c.tolist(), 
                 'w_d': self.w_d.tolist(), 
-                'y_d': self.y_d.tolist(), 
-                'a': self.a,
-                's': self.s,
+                'a': float(self.a),
+                's': float(self.s),
                 'kind': self.kind}
         else: 
             attributes = {
-                'K' : self.K,
-                'F0' : self.F0,
-                'b': self.b, 
+                'K' : float(self.K),
+                'F0' : float(self.F0),
+                'b': float(self.b), 
+                'y': None, 
                 'w_c': None, 
-                'y_c': None, 
                 'w_d': None, 
-                'y_d': None, 
                 'a': None, 
                 's': None,
                 'kind': self.kind}
@@ -112,13 +165,12 @@ class HSAModel:
             attributes['K'],
             attributes['F0'],
             attributes['b'], 
-            attributes['w_c'], 
-            attributes['y_c'], 
-            attributes['w_d'], 
-            attributes['y_d'], 
+            np.array(attributes['y']), 
+            np.array(attributes['w_c']), 
+            np.array(attributes['w_d']), 
             attributes['a'], 
             attributes['s'], 
-            attributes['kind'])
+            kind=attributes['kind'])
 
 def load_potential(path:os.path):
     with open(path, 'rb') as f:

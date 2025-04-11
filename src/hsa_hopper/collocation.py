@@ -401,7 +401,7 @@ class HopBVP:
 
         # compute residuals
         for (i,j) in np.ndindex((Ns,Nc)):
-            defects[i,j] = stance_dynamics(x[i,j],xdot[i,j],u[i,j],self.dynamic_params)
+            defects[i,[j]] = stance_dynamics(x[i,[j]],xdot[i,[j]],u[i,[j]],self.dynamic_params)
         defects = defects - xddot
         return defects.flatten(order='F')
 
@@ -444,7 +444,7 @@ class HopBVP:
 
         return data.flatten(order='F') 
 
-    def cost(self, z, Kv = .546, Kfudge=0.78, R = .29):
+    def cost(self, z, Kv = .4726, R = .1425):
         Ns = self.collo_params.Ns
         Nx =  self.collo_params.Nx
         Nu = self.collo_params.Nu
@@ -473,8 +473,9 @@ class HopBVP:
 
         # torque
         tau = -Kx*x
-        tau[:, :Nu] = u
+        tau[:, :Nu] += u
         tau[:,0] += Kx*x0
+        tau = tau
         # tau_du = np.zeros((Ns,Nx,Nu))
         tau_dx = -Kx
 
@@ -484,10 +485,12 @@ class HopBVP:
         # mechanical work
         # derivative with respect to torque
         mech_work_dtau = np.einsum('ijk,ik->ij', prod_int, xdot)
+        # mech_work_dtau = np.einsum('ijk,ik->ij', prod_int, xdot)
         mech_work = np.einsum('ij,ij->i', mech_work_dtau, tau)
 
         # derivative with respect to xdot
         mech_work_dxdot = np.einsum('ijk,ij->ik', prod_int, tau)
+        # mech_work_dxdot = np.einsum('ijk,ij->ik', prod_int, tau)
 
         # accumulate derivative with respect to x
         mech_work_dx = -Kx*mech_work_dtau
@@ -498,14 +501,14 @@ class HopBVP:
         u_grad += mech_work_dtau[:,:Nu]
 
         # thermal work
-        current = tau / (Kv*Kfudge)
+        current = tau / (Kv)
         voltage = current * R
         therm_work_dI = np.einsum('ijk,ik->ij', prod_int, voltage)
         therm_work = np.einsum('ij,ij->i', therm_work_dI, current)
         therm_work_dV = np.einsum('ijk,ij->ik', prod_int, voltage)
 
         # accumulate gradients
-        current_dtau = 1/(Kv*Kfudge)
+        current_dtau = 1/(Kv)
         voltage_dtau = R*current_dtau
         x_grad += therm_work_dI*current_dtau*tau_dx
         x_grad += therm_work_dV*voltage_dtau*tau_dx
@@ -552,7 +555,7 @@ class HopBVP:
         xdot = A_diff@c
         u = A[:,:Nu]@d
         torque = u + Kx*(x0-x)
-        I = torque/(Kv*Kfudge)
+        I = torque/(Kv)
 
         # compute losses for integration,
         # includes thermal power and positive mechanical power
