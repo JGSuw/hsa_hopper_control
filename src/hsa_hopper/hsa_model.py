@@ -145,7 +145,7 @@ class HSAModel:
         else:
             w_c = None
         if self.w_d is not None:
-            w_d = self.w_c.tolist()
+            w_d = self.w_d.tolist()
         else:
             w_d = None
         attributes = {
